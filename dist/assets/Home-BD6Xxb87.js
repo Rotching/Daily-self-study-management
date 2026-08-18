@@ -1,0 +1,1 @@
+import{_ as a}from"./_plugin-vue_export-helper-DlAUqK2U.js";import{c as t,a as s,o}from"./index-RjUDyumZ.js";const p={class:"page"},c={__name:"Home",setup(r){return(_,e)=>(o(),t("div",p,[...e[0]||(e[0]=[s("h1",{class:"page-title"},"今日，稳步精进",-1),s("p",{class:"page-tip"},"首页 - 建设中",-1)])]))}},l=a(c,[["__scopeId","data-v-d588a502"]]);export{l as default};

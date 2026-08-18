@@ -1,0 +1,1 @@
+import{_ as s}from"./_plugin-vue_export-helper-DlAUqK2U.js";import{c as t,a,o}from"./index-RjUDyumZ.js";const p={class:"page"},c={__name:"MessageManage",setup(r){return(_,e)=>(o(),t("div",p,[...e[0]||(e[0]=[a("h1",{class:"page-title"},"寄语管理",-1),a("p",{class:"page-tip"},"寄语管理页 - 建设中",-1)])]))}},d=s(c,[["__scopeId","data-v-0a99fbd6"]]);export{d as default};

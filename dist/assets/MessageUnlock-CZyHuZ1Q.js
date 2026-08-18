@@ -1,0 +1,1 @@
+import{_ as a}from"./_plugin-vue_export-helper-DlAUqK2U.js";import{c as t,a as s,o}from"./index-RjUDyumZ.js";const c={class:"page"},p={__name:"MessageUnlock",setup(r){return(_,e)=>(o(),t("div",c,[...e[0]||(e[0]=[s("h1",{class:"page-title"},"寄语解锁",-1),s("p",{class:"page-tip"},"寄语解锁页 - 建设中",-1)])]))}},d=a(p,[["__scopeId","data-v-c9808d23"]]);export{d as default};

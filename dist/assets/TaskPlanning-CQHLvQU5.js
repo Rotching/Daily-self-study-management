@@ -1,0 +1,1 @@
+import{_ as e}from"./_plugin-vue_export-helper-DlAUqK2U.js";import{c as t,a as s,o}from"./index-RjUDyumZ.js";const n={class:"page"},p={__name:"TaskPlanning",setup(c){return(r,a)=>(o(),t("div",n,[...a[0]||(a[0]=[s("h1",{class:"page-title"},"每日任务规划",-1),s("p",{class:"page-tip"},"每日任务规划页 - 建设中",-1)])]))}},i=e(p,[["__scopeId","data-v-3ba22f6b"]]);export{i as default};
