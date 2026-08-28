@@ -36,6 +36,12 @@ const routes = [
     meta: { title: '成长轨迹地图' }
   },
   {
+    path: '/settings',
+    name: 'Settings',
+    component: () => import('@/views/Settings.vue'),
+    meta: { title: '设置与隐私' }
+  },
+  {
     path: '/admin/message-manage',
     name: 'MessageManage',
     component: () => import('@/views/admin/MessageManage.vue'),

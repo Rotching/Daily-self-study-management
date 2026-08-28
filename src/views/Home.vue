@@ -1,16 +1,6 @@
 <script setup>
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-
-const router = useRouter()
-
-// 菜单项
-const menus = [
-  { key: 'home', label: '首页', active: true },
-  { key: 'task', label: '自习计划', active: false },
-  { key: 'message', label: '成长寄语', active: false },
-  { key: 'growth', label: '成长轨迹', active: false }
-]
+import StudySidebar from '@/components/StudySidebar.vue'
 
 // 首页渲染数据（待接入接口）
 const homeData = ref({
@@ -32,45 +22,11 @@ const homeData = ref({
   dailyQuote: '你留下的每一滴汗水，都在悄悄浇灌未来的花朵。'
 })
 
-const handleMenuClick = (key) => {
-  // 菜单跳转占位
-  const routeMap = {
-    home: '/home',
-    task: '/task-planning',
-    message: '/message-unlock',
-    growth: '/growth-map'
-  }
-  if (routeMap[key]) router.push(routeMap[key])
-}
-
-const goSettings = () => {
-  // 设置入口占位
-}
 </script>
 
 <template>
   <div class="home-container">
-    <!-- 左侧导航栏 -->
-    <aside class="sidebar">
-      <div class="logo">日常自习管理平台</div>
-
-      <nav class="menu">
-        <div
-          v-for="m in menus"
-          :key="m.key"
-          class="menu-item"
-          :class="{ active: m.active }"
-          @click="handleMenuClick(m.key)"
-        >
-          <span class="menu-text">{{ m.label }}</span>
-        </div>
-      </nav>
-
-      <div class="settings" @click="goSettings">
-        <div class="settings-icon"></div>
-        <span class="settings-text">设置</span>
-      </div>
-    </aside>
+    <StudySidebar active="home" />
 
     <!-- 主内容区 -->
     <main class="content">
@@ -171,7 +127,6 @@ const goSettings = () => {
 .logo {
   color: #739f8c;
   font-size: 28px;
-  font-family: Inter;
   font-weight: 600;
   word-wrap: break-word;
   margin-bottom: 60px;
@@ -203,7 +158,6 @@ const goSettings = () => {
 .menu-text {
   color: rgba(4.22, 111.74, 43.64, 0.50);
   font-size: 24px;
-  font-family: Inter;
   font-weight: 400;
 }
 
@@ -232,7 +186,6 @@ const goSettings = () => {
 .settings-text {
   color: rgba(118.04, 74.76, 0, 0.50);
   font-size: 20px;
-  font-family: Inter;
 }
 
 /* ============ 主内容区 ============ */
@@ -240,7 +193,7 @@ const goSettings = () => {
   flex: 1;
   height: 100%;
   background: white;
-  padding: 52px 54px 48px 48px;
+  padding: var(--app-page-padding-y) var(--app-page-padding-x) 40px;
   box-sizing: border-box;
   overflow-y: auto;
   display: flex;
@@ -253,23 +206,20 @@ const goSettings = () => {
 
 .greeting {
   color: rgba(4.22, 111.74, 43.64, 0.50);
-  font-size: 16px;
-  font-family: Inter;
+  font-size: 14px;
   margin-bottom: 16px;
 }
 
 .welcome {
   color: rgba(0, 0, 0, 0.70);
-  font-size: 44px;
-  font-family: Inter;
+  font-size: var(--app-title-size);
   font-weight: 400;
   margin: 0 0 28px 0;
 }
 
 .subtitle {
   color: rgba(4.22, 111.74, 43.64, 0.50);
-  font-size: 20px;
-  font-family: Inter;
+  font-size: 16px;
 }
 
 .divider {
@@ -283,15 +233,15 @@ const goSettings = () => {
 .cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 24px;
-  margin-bottom: 40px;
+  gap: 18px;
+  margin-bottom: 32px;
 }
 
 .card {
-  height: 142px;
-  border-radius: 16px;
-  border: 2px solid #e6d4b5;
-  padding: 25px 30px;
+  min-height: 126px;
+  border-radius: var(--app-radius);
+  border: 1.5px solid #e6d4b5;
+  padding: 22px 24px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -300,21 +250,19 @@ const goSettings = () => {
 
 .card-label {
   color: #764b00;
-  font-size: 20px;
-  font-family: Inter;
+  font-size: 15px;
   margin-bottom: 18px;
 }
 
 .card-value {
   color: black;
-  font-size: 40px;
-  font-family: Inter;
+  font-size: 32px;
   font-weight: 400;
 }
 
 .unit {
   color: #8fb8a6;
-  font-size: 20px;
+  font-size: 15px;
   margin-left: 6px;
 }
 
@@ -334,16 +282,14 @@ const goSettings = () => {
 
 .task-title {
   color: rgba(0, 0, 0, 0.80);
-  font-size: 32px;
-  font-family: Inter;
+  font-size: 26px;
   font-weight: 400;
   margin: 0;
 }
 
 .task-summary {
   color: #70655d;
-  font-size: 24px;
-  font-family: Inter;
+  font-size: 17px;
 }
 
 .task-summary .num {
@@ -383,9 +329,9 @@ const goSettings = () => {
 
 .task-card {
   flex: 1;
-  border: 2px solid #739f8c;
-  border-radius: 10px;
-  padding: 40px 34px;
+  border: 1.5px solid #739f8c;
+  border-radius: var(--app-radius);
+  padding: 30px 28px;
   display: flex;
   gap: 24px;
   margin-bottom: 24px;
@@ -401,8 +347,7 @@ const goSettings = () => {
 
 .pending-label {
   color: #948477;
-  font-size: 24px;
-  font-family: Inter;
+  font-size: 17px;
   flex-shrink: 0;
 }
 
@@ -414,8 +359,7 @@ const goSettings = () => {
 
 .pending-item {
   color: #948477;
-  font-size: 24px;
-  font-family: Inter;
+  font-size: 17px;
   line-height: 1.5;
 }
 
@@ -427,14 +371,14 @@ const goSettings = () => {
 }
 
 .priority {
-  width: 120px;
-  height: 32px;
+  width: 104px;
+  height: 30px;
   border-radius: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 20px;
+  font-size: 14px;
   font-family: Inter;
 }
 
@@ -449,8 +393,7 @@ const goSettings = () => {
 /* ============ 今日寄语 ============ */
 .quote {
   color: rgba(4.22, 111.74, 43.64, 0.50);
-  font-size: 22px;
-  font-family: 'Li Xuke', Inter;
+  font-size: 17px;
   font-weight: 500;
   line-height: 35px;
   text-align: center;
@@ -469,6 +412,39 @@ const goSettings = () => {
 
   .task-title {
     font-size: 26px;
+  }
+}
+
+@media (max-width: 760px) {
+  .home-container {
+    height: auto;
+    min-height: 100%;
+    display: block;
+    overflow: visible;
+  }
+
+  .content {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .welcome {
+    font-size: var(--app-title-size);
+  }
+
+  .cards {
+    grid-template-columns: 1fr;
+  }
+
+  .task-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .task-card,
+  .task-pending {
+    flex-direction: column;
   }
 }
 </style>

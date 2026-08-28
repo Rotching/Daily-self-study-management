@@ -3,31 +3,38 @@
 </script>
 
 <template>
-  <div class="page">
-    <h1 class="page-title">用户数据</h1>
-    <p class="page-tip">用户数据页 - 建设中</p>
-  </div>
+  <main class="page">
+    <section class="placeholder">
+      <p>管理后台</p>
+      <h1>用户数据</h1>
+      <span>页面功能正在建设中</span>
+    </section>
+  </main>
 </template>
 
 <style scoped>
 .page {
   min-height: 100vh;
-  background: #f7f5f0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
+  padding: var(--app-page-padding-y) var(--app-page-padding-x);
+  display: grid;
+  place-items: center;
+  background: var(--app-page-bg);
 }
 
-.page-title {
-  color: #5c8876;
-  font-size: 48px;
-  font-weight: 700;
+.placeholder {
+  width: min(560px, 100%);
+  padding: 42px;
+  border: 1.5px solid var(--app-sand);
+  border-radius: var(--app-radius);
+  background: var(--app-surface);
+  text-align: center;
 }
 
-.page-tip {
-  color: #8fb8a6;
-  font-size: 24px;
+.placeholder p { margin: 0 0 10px; color: var(--app-green); font-size: 14px; }
+.placeholder h1 { margin: 0 0 12px; color: var(--app-text-strong); font-size: var(--app-title-size); font-weight: 400; }
+.placeholder span { color: var(--app-muted); font-size: 15px; }
+
+@media (max-width: 760px) {
+  .placeholder { padding: 30px 20px; }
 }
 </style>

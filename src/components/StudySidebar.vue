@@ -1,0 +1,229 @@
+<script setup>
+import { useRouter } from 'vue-router'
+
+defineProps({
+  active: {
+    type: String,
+    required: true
+  }
+})
+
+const router = useRouter()
+
+const menus = [
+  { key: 'home', label: '首页', route: '/home' },
+  { key: 'task', label: '自习计划', route: '/task-planning' },
+  { key: 'message', label: '成长寄语', route: '/message-unlock' },
+  { key: 'growth', label: '成长轨迹', route: '/growth-map' }
+]
+</script>
+
+<template>
+  <aside class="study-sidebar">
+    <button class="brand" type="button" @click="router.push('/home')">日常自习管理平台</button>
+
+    <nav class="menu" aria-label="主导航">
+      <button
+        v-for="menu in menus"
+        :key="menu.key"
+        class="menu-item"
+        :class="{ active: active === menu.key }"
+        type="button"
+        @click="router.push(menu.route)"
+      >
+        <span class="menu-icon" :class="`icon-${menu.key}`" aria-hidden="true"></span>
+        <span>{{ menu.label }}</span>
+      </button>
+    </nav>
+
+    <button class="settings" :class="{ active: active === 'settings' }" type="button" aria-label="设置" @click="router.push('/settings')">
+      <span class="settings-icon" aria-hidden="true"></span>
+      <span>设置</span>
+    </button>
+  </aside>
+</template>
+
+<style scoped>
+.study-sidebar {
+  width: 244px;
+  flex: 0 0 244px;
+  min-height: 100vh;
+  padding: 44px 18px 38px;
+  display: flex;
+  flex-direction: column;
+  gap: 54px;
+  background: #f7f5f0;
+  color: #739f8c;
+}
+
+.brand {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #739f8c;
+  font: inherit;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.menu-item {
+  width: 100%;
+  height: 54px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  background: rgba(230, 212, 181, 0.13);
+  color: rgba(4, 112, 44, 0.5);
+  font: inherit;
+  font-size: 18px;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.menu-item:hover {
+  transform: translateX(3px);
+}
+
+.menu-item.active {
+  background: rgba(4, 112, 44, 0.5);
+  color: #ffffff;
+}
+
+.menu-icon {
+  width: 20px;
+  height: 20px;
+  border: 1.8px solid currentColor;
+  border-radius: 4px;
+  position: relative;
+  flex: 0 0 20px;
+}
+
+.icon-home {
+  border: 0;
+}
+
+.icon-home::before {
+  content: '';
+  position: absolute;
+  inset: 7px 3px 1px;
+  border: 1.8px solid currentColor;
+  border-top: 0;
+}
+
+.icon-home::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 2px;
+  width: 12px;
+  height: 12px;
+  border-left: 1.8px solid currentColor;
+  border-top: 1.8px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.icon-task::before,
+.icon-message::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 6px;
+  height: 1.8px;
+  background: currentColor;
+  box-shadow: 0 5px 0 currentColor;
+}
+
+.icon-growth::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  width: 3px;
+  height: 6px;
+  background: currentColor;
+  box-shadow: 5px -3px 0 currentColor, 10px -7px 0 currentColor;
+}
+
+.settings {
+  margin-top: auto;
+  width: max-content;
+  border: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: transparent;
+  color: rgba(118, 75, 0, 0.5);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  transition: color 0.18s ease, transform 0.18s ease;
+}
+
+.settings:hover {
+  transform: translateY(-2px);
+}
+
+.settings.active {
+  color: #5d8f7a;
+  font-weight: 600;
+}
+
+.settings-icon {
+  width: 24px;
+  height: 24px;
+  border: 1.8px solid currentColor;
+  border-radius: 50%;
+  position: relative;
+}
+
+.settings-icon::before {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border: 1.8px solid currentColor;
+  border-radius: 50%;
+}
+
+@media (max-width: 760px) {
+  .study-sidebar {
+    width: 100%;
+    min-width: 0;
+    flex-basis: auto;
+    min-height: auto;
+    padding: 22px 16px;
+    gap: 20px;
+  }
+
+  .brand {
+    font-size: 23px;
+  }
+
+  .menu {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .menu-item {
+    height: 50px;
+    padding-inline: 14px;
+    font-size: 17px;
+  }
+
+  .settings { margin-top: 2px; }
+}
+</style>
