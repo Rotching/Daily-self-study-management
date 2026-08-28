@@ -1,1 +1,0 @@
-import{_ as s}from"./_plugin-vue_export-helper-DlAUqK2U.js";import{c as t,a as e,o}from"./index-RjUDyumZ.js";const r={class:"page"},p={__name:"UserData",setup(c){return(_,a)=>(o(),t("div",r,[...a[0]||(a[0]=[e("h1",{class:"page-title"},"用户数据",-1),e("p",{class:"page-tip"},"用户数据页 - 建设中",-1)])]))}},l=s(p,[["__scopeId","data-v-b88db3ad"]]);export{l as default};

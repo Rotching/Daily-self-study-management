@@ -1,1 +1,0 @@
-import{_ as e}from"./_plugin-vue_export-helper-DlAUqK2U.js";import{c as s,a as t,o}from"./index-RjUDyumZ.js";const p={class:"page"},r={__name:"GrowthMap",setup(c){return(_,a)=>(o(),s("div",p,[...a[0]||(a[0]=[t("h1",{class:"page-title"},"成长轨迹地图",-1),t("p",{class:"page-tip"},"成长轨迹地图 - 建设中",-1)])]))}},i=e(r,[["__scopeId","data-v-91a19672"]]);export{i as default};
