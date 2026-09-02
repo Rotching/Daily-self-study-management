@@ -1762,7 +1762,7 @@ onUnmounted(() => window.removeEventListener('keydown', handleEscape))
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .study-page {
     display: block;
   }
@@ -2002,7 +2002,7 @@ onUnmounted(() => window.removeEventListener('keydown', handleEscape))
   font-size: 30px;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .main-panel {
     padding: var(--app-page-padding-y) var(--app-page-padding-x) 36px;
   }

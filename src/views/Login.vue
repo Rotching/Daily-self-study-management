@@ -205,7 +205,7 @@ const handleLogin = () => {
   background: #527966;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .login-container {
     display: block;
   }

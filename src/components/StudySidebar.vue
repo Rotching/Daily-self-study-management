@@ -36,10 +36,21 @@ const menus = [
       </button>
     </nav>
 
-    <button class="settings" :class="{ active: active === 'settings' }" type="button" aria-label="设置" @click="router.push('/settings')">
-      <span class="settings-icon" aria-hidden="true"></span>
-      <span>设置</span>
-    </button>
+    <div class="sidebar-footer">
+      <button class="settings" :class="{ active: active === 'settings' }" type="button" aria-label="设置" @click="router.push('/settings')">
+        <span class="settings-icon" aria-hidden="true"></span>
+        <span>设置</span>
+      </button>
+      <button
+        v-if="active === 'home'"
+        class="admin-entry"
+        type="button"
+        aria-label="进入管理端用户数据页"
+        @click="router.push('/admin/user-data')"
+      >
+        管理端
+      </button>
+    </div>
   </aside>
 </template>
 
@@ -157,8 +168,16 @@ const menus = [
   box-shadow: 5px -3px 0 currentColor, 10px -7px 0 currentColor;
 }
 
-.settings {
+.sidebar-footer {
   margin-top: auto;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.settings,
+.admin-entry {
   width: max-content;
   border: 0;
   padding: 0;
@@ -173,13 +192,23 @@ const menus = [
   transition: color 0.18s ease, transform 0.18s ease;
 }
 
-.settings:hover {
+.settings:hover,
+.admin-entry:hover {
   transform: translateY(-2px);
 }
 
 .settings.active {
   color: #5d8f7a;
   font-weight: 600;
+}
+
+.admin-entry {
+  margin-left: auto;
+  min-height: 32px;
+  border: 1px solid rgba(115, 159, 140, 0.45);
+  border-radius: 16px;
+  padding: 4px 12px;
+  color: var(--app-green-strong);
 }
 
 .settings-icon {
@@ -198,7 +227,7 @@ const menus = [
   border-radius: 50%;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .study-sidebar {
     width: 100%;
     min-width: 0;
@@ -224,6 +253,10 @@ const menus = [
     font-size: 17px;
   }
 
-  .settings { margin-top: 2px; }
+  .sidebar-footer {
+    margin-top: 2px;
+    justify-content: flex-start;
+    min-height: 40px;
+  }
 }
 </style>

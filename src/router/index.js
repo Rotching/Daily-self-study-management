@@ -45,13 +45,13 @@ const routes = [
     path: '/admin/message-manage',
     name: 'MessageManage',
     component: () => import('@/views/admin/MessageManage.vue'),
-    meta: { title: '寄语管理' }
+    meta: { title: '寄语管理', requiresAuth: true, requiresAdmin: true }
   },
   {
     path: '/admin/user-data',
     name: 'UserData',
     component: () => import('@/views/admin/UserData.vue'),
-    meta: { title: '用户数据' }
+    meta: { title: '用户数据', requiresAuth: true, requiresAdmin: true }
   }
 ]
 

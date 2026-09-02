@@ -12,6 +12,7 @@
   --app-surface: #ffffff;
   --app-green: #739f8c;
   --app-green-strong: #5d8f7a;
+  --app-green-light: #8fb8a6;
   --app-green-soft: #e5f2ec;
   --app-sand: #e6d4b5;
   --app-sand-soft: #faf5ec;
@@ -21,6 +22,9 @@
   --app-page-padding-x: clamp(28px, 4vw, 52px);
   --app-page-padding-y: 44px;
   --app-radius: 8px;
+  --app-card-radius: 16px;
+  --app-panel-radius: 25px;
+  --app-admin-sidebar-width: 312px;
   --app-control-height: 44px;
   --app-title-size: clamp(36px, 3.6vw, 46px);
   --app-section-size: 24px;
@@ -63,7 +67,7 @@ select:focus-visible {
   outline-offset: 2px;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   :root {
     --app-page-padding-x: 16px;
     --app-page-padding-y: 28px;

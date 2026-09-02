@@ -415,7 +415,7 @@ const homeData = ref({
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .home-container {
     height: auto;
     min-height: 100%;
