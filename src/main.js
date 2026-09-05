@@ -11,3 +11,9 @@ window.addEventListener('daily-study:auth-expired', () => {
     router.replace({ path: '/login', query: { redirect: router.currentRoute.value.fullPath } })
   }
 })
+
+window.addEventListener('daily-study:admin-forbidden', () => {
+  if (router.currentRoute.value.meta.requiresAdmin) {
+    router.replace('/home')
+  }
+})

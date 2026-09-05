@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { getAuthSession, isAuthenticated } from '@/api/client'
+import { isAdmin, isAuthenticated } from '@/api/client'
 
 const routes = [
   {
@@ -70,12 +70,12 @@ router.beforeEach((to, from, next) => {
     next({ path: '/login', query: { redirect: to.fullPath } })
     return
   }
-  if (to.meta.requiresAdmin && String(getAuthSession()?.role).toUpperCase() !== 'ADMIN') {
+  if (to.meta.requiresAdmin && !isAdmin()) {
     next('/home')
     return
   }
   if (to.path === '/login' && isAuthenticated()) {
-    next(String(getAuthSession()?.role).toUpperCase() === 'ADMIN' ? '/admin/user-data' : '/home')
+    next(isAdmin() ? '/admin/user-data' : '/home')
     return
   }
   next()

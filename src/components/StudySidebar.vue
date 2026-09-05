@@ -1,19 +1,23 @@
 <script setup>
 import { useRouter } from 'vue-router'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { logout } from '@/api/auth'
-import { getAuthSession } from '@/api/client'
+import { isAdmin } from '@/api/client'
 
-defineProps({
+const props = defineProps({
   active: {
     type: String,
     required: true
+  },
+  mode: {
+    type: String,
+    default: 'user',
+    validator: (value) => ['user', 'admin'].includes(value)
   }
 })
 
 const router = useRouter()
 const loggingOut = ref(false)
-const isAdmin = String(getAuthSession()?.role).toUpperCase() === 'ADMIN'
 
 const handleLogout = async () => {
   if (loggingOut.value) return
@@ -26,19 +30,27 @@ const handleLogout = async () => {
   }
 }
 
-const menus = [
+const userMenus = [
   { key: 'home', label: '首页', route: '/home' },
   { key: 'task', label: '自习计划', route: '/task-planning' },
   { key: 'message', label: '成长寄语', route: '/message-unlock' },
   { key: 'growth', label: '成长轨迹', route: '/growth-map' }
 ]
+
+const adminMenus = [
+  { key: 'messages', label: '寄语管理', route: '/admin/message-manage' },
+  { key: 'users', label: '用户数据', route: '/admin/user-data' }
+]
+
+const adminMode = computed(() => props.mode === 'admin')
+const menus = computed(() => adminMode.value ? adminMenus : userMenus)
 </script>
 
 <template>
-  <aside class="study-sidebar">
+  <aside class="study-sidebar" :class="{ 'admin-mode': adminMode }">
     <button class="brand" type="button" @click="router.push('/home')">日常自习管理平台</button>
 
-    <nav class="menu" aria-label="主导航">
+    <nav class="menu" :aria-label="adminMode ? '管理员导航' : '主导航'">
       <button
         v-for="menu in menus"
         :key="menu.key"
@@ -47,26 +59,37 @@ const menus = [
         type="button"
         @click="router.push(menu.route)"
       >
-        <span class="menu-icon" :class="`icon-${menu.key}`" aria-hidden="true"></span>
+        <span v-if="!adminMode" class="menu-icon" :class="`icon-${menu.key}`" aria-hidden="true"></span>
         <span>{{ menu.label }}</span>
       </button>
     </nav>
 
     <div class="sidebar-footer">
-      <button class="settings" :class="{ active: active === 'settings' }" type="button" aria-label="设置" @click="router.push('/settings')">
-        <span class="settings-icon" aria-hidden="true"></span>
-        <span>设置</span>
+      <button
+        v-if="adminMode"
+        class="menu-item user-entry"
+        type="button"
+        aria-label="回到用户端首页"
+        @click="router.push('/home')"
+      >
+        回到用户端
       </button>
       <button
-        v-if="active === 'home' && isAdmin"
-        class="admin-entry"
+        v-else-if="isAdmin()"
+        class="menu-item admin-entry"
         type="button"
         aria-label="进入管理端用户数据页"
         @click="router.push('/admin/user-data')"
       >
-        管理端
+        进入管理员端
       </button>
-      <button class="logout-entry" type="button" :disabled="loggingOut" @click="handleLogout">{{ loggingOut ? '退出中…' : '退出' }}</button>
+      <div class="sidebar-actions">
+        <button class="settings" :class="{ active: active === 'settings' }" type="button" aria-label="设置" @click="router.push('/settings')">
+          <span class="settings-icon" aria-hidden="true"></span>
+          <span>设置</span>
+        </button>
+        <button class="logout-entry" type="button" :disabled="loggingOut" @click="handleLogout">{{ loggingOut ? '退出中…' : '退出' }}</button>
+      </div>
     </div>
   </aside>
 </template>
@@ -75,11 +98,17 @@ const menus = [
 .study-sidebar {
   width: 244px;
   flex: 0 0 244px;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   padding: 44px 18px 38px;
   display: flex;
   flex-direction: column;
   gap: 54px;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  overflow: hidden;
   background: #f7f5f0;
   color: #739f8c;
 }
@@ -189,12 +218,19 @@ const menus = [
   margin-top: auto;
   width: 100%;
   display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sidebar-actions {
+  width: 100%;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 18px;
 }
 
 .settings,
-.admin-entry,
 .logout-entry {
   width: max-content;
   border: 0;
@@ -211,7 +247,6 @@ const menus = [
 }
 
 .settings:hover,
-.admin-entry:hover,
 .logout-entry:hover {
   transform: translateY(-2px);
 }
@@ -222,14 +257,29 @@ const menus = [
 }
 
 .admin-entry {
-  margin-left: auto;
-  min-height: 32px;
-  border: 1px solid rgba(115, 159, 140, 0.45);
-  border-radius: 16px;
-  padding: 4px 12px;
-  color: var(--app-green-strong);
+  padding-left: 53px;
 }
-.logout-entry{margin-left:auto;color:rgba(118,75,0,.5)}.admin-entry+.logout-entry{margin-left:0}.logout-entry:disabled{cursor:wait;opacity:.6}
+
+.user-entry {
+  padding-left: 18px;
+}
+
+.logout-entry {
+  min-height: 36px;
+  padding: 8px 16px;
+  border-radius: 7px;
+  background: #c43d3d;
+  color: #ffffff;
+}
+
+.logout-entry:hover:not(:disabled) {
+  background: #a92f2f;
+}
+
+.logout-entry:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
 
 .settings-icon {
   width: 24px;
@@ -252,9 +302,13 @@ const menus = [
     width: 100%;
     min-width: 0;
     flex-basis: auto;
+    height: auto;
     min-height: auto;
     padding: 22px 16px;
     gap: 20px;
+    position: relative;
+    top: auto;
+    overflow: visible;
   }
 
   .brand {

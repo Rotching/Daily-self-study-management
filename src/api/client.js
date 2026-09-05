@@ -8,6 +8,9 @@ export class ApiError extends Error {
     this.status = options.status ?? null
     this.code = options.code ?? null
     this.payload = options.payload ?? null
+    this.errorDetails = options.errorDetails ?? null
+    this.requestId = options.requestId ?? null
+    this.timestamp = options.timestamp ?? null
   }
 }
 
@@ -26,6 +29,10 @@ export const setAuthSession = (session) => localStorage.setItem(
 )
 export const clearAuthSession = () => localStorage.removeItem(SESSION_KEY)
 export const isAuthenticated = () => Boolean(getAuthSession()?.token)
+export const isAdmin = () => {
+  const session = getAuthSession()
+  return Boolean(session?.token) && session?.role === 'ADMIN'
+}
 
 const buildQuery = (params = {}) => {
   const query = new URLSearchParams()
@@ -51,11 +58,14 @@ const parseResponse = async (response) => {
 }
 
 const assertSuccessfulPayload = (payload, response) => {
-  if (!response.ok || (payload && typeof payload === 'object' && 'code' in payload && payload.code !== 0 && payload.code !== 200)) {
+  if (!response.ok || (payload && typeof payload === 'object' && 'code' in payload && payload.code !== 200)) {
     throw new ApiError(payload?.message || `请求失败（HTTP ${response.status}）`, {
       status: response.status,
       code: payload?.code,
-      payload
+      payload,
+      errorDetails: payload?.errorDetails,
+      requestId: payload?.requestId,
+      timestamp: payload?.timestamp
     })
   }
   return payload
@@ -132,6 +142,10 @@ export const apiRequest = async (path, options = {}) => {
   if (unauthorized && auth) {
     clearAuthSession()
     window.dispatchEvent(new CustomEvent('daily-study:auth-expired'))
+  }
+  const forbidden = response.status === 403 || payload?.code === 403
+  if (forbidden && auth) {
+    window.dispatchEvent(new CustomEvent('daily-study:admin-forbidden'))
   }
 
   return assertSuccessfulPayload(payload, response)

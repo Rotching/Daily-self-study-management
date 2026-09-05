@@ -1,8 +1,8 @@
-import { apiGet } from '@/api/client'
+import { apiGet, unwrapData } from '@/api/client'
 
-export const getAdminMessages = (params = {}, options = {}) => apiGet('/admin/messages', {
+export const getAdminMessages = async (params = {}, options = {}) => unwrapData(await apiGet('/admin/messages', {
   ...options,
   params
-})
+}))
 
-export const getAdminMessageStatistics = (options = {}) => apiGet('/admin/messages/statistics', options)
+export const getAdminMessageStatistics = async (options = {}) => unwrapData(await apiGet('/admin/messages/statistics', options))
