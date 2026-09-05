@@ -1,6 +1,7 @@
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import StudySidebar from '@/components/StudySidebar.vue'
+import { createTask, getDailyTasks, updateTask } from '@/api/tasks'
 
 const priorityMeta = {
   high: { label: '高优先级', short: '高', tone: 'high', stars: 5 },
@@ -24,32 +25,7 @@ const createForm = reactive({
   reminderTime: '08:00'
 })
 
-const tasks = ref([
-  {
-    id: 1,
-    name: '英语阅读4篇',
-    priority: 'medium',
-    minutes: 45,
-    progress: 68,
-    completed: false,
-    rating: 3,
-    summary: '',
-    reminder: '',
-    note: '完成两篇精读后整理生词，剩余两篇用计时阅读。'
-  },
-  {
-    id: 2,
-    name: '高数错题整理',
-    priority: 'high',
-    minutes: 70,
-    progress: 68,
-    completed: false,
-    rating: 3,
-    summary: '',
-    reminder: '',
-    note: '重点复盘极限与导数题型，补齐步骤里的薄弱点。'
-  }
-])
+const tasks = ref([])
 
 const viewMode = ref('dashboard')
 const activeTaskId = ref(null)
@@ -60,6 +36,9 @@ const successModalOpen = ref(false)
 const datePickerOpen = ref(false)
 const selectedDate = ref(toDateValue(new Date()))
 const calendarCursor = ref(new Date())
+const loading = ref(false)
+const saving = ref(false)
+const pageError = ref('')
 
 const activeTask = computed(() => tasks.value.find((task) => task.id === activeTaskId.value))
 
@@ -139,19 +118,68 @@ function toDateValue(date) {
   return `${year}-${month}-${day}`
 }
 
-const normalizeTask = (task) => ({
-  rating: 0,
-  summary: '',
-  reminder: '',
-  note: '记录专注过程，完成后可以补充任务小结。',
-  ...task
-})
-
-const persistTasks = () => {
-  localStorage.setItem('daily-study-tasks', JSON.stringify(tasks.value))
+const priorityFromApi = (priority) => ({ 3: 'high', 2: 'medium', 1: 'low' }[Number(priority)] || 'medium')
+const priorityToApi = (priority) => ({ high: 3, medium: 2, low: 1 }[priority] || 2)
+const getTaskMetadata = () => {
+  try { return JSON.parse(localStorage.getItem('daily-study-task-metadata') || '{}') }
+  catch { return {} }
 }
 
-const addTask = () => {
+const normalizeTask = (task) => {
+  const id = task.taskId ?? task.id
+  const metadata = getTaskMetadata()[id] || {}
+  const status = String(task.status || '').toLowerCase()
+  return {
+    ...task,
+    id,
+    name: task.taskName ?? task.name ?? '',
+    priority: ['1', '2', '3'].includes(String(task.priority)) ? priorityFromApi(task.priority) : (task.priority || 'medium'),
+    minutes: Number(task.plannedDuration ?? task.minutes) || 0,
+    actualDuration: Number(task.actualDuration) || 0,
+    progress: Number(task.progress) || 0,
+    completed: status === 'completed' || status === 'done' || Number(task.progress) >= 100,
+    rating: Number(task.rating) || 0,
+    summary: task.summary ?? metadata.summary ?? '',
+    reminder: task.reminder ?? metadata.reminder ?? '',
+    note: task.note || '记录专注过程，完成后可以补充任务小结。'
+  }
+}
+
+const persistTaskMetadata = (task) => {
+  const metadata = getTaskMetadata()
+  metadata[task.id] = { summary: task.summary || '', reminder: task.reminder || '' }
+  localStorage.setItem('daily-study-task-metadata', JSON.stringify(metadata))
+}
+
+const toApiTask = (task) => ({
+  taskName: task.name,
+  plannedDuration: task.minutes,
+  priority: priorityToApi(task.priority),
+  progress: task.progress,
+  rating: task.rating || 0,
+  actualDuration: task.actualDuration || 0,
+  tags: Array.isArray(task.tags) ? task.tags : [],
+  status: task.completed ? 'completed' : task.progress > 0 ? 'started' : 'pending',
+  order: task.order || 0
+})
+
+const loadTasks = async () => {
+  loading.value = true
+  pageError.value = ''
+  try {
+    const daily = await getDailyTasks(selectedDate.value)
+    tasks.value = (daily?.tasks || []).map(normalizeTask)
+    dailyProgress.value = Number(daily?.totalCompletion) || 0
+  } catch (error) {
+    tasks.value = []
+    dailyProgress.value = 0
+    pageError.value = error.message || '任务加载失败'
+  } finally {
+    loading.value = false
+  }
+}
+
+const addTask = async () => {
   const name = taskForm.name.trim()
   const hours = clampNumber(taskForm.hours, 0, 12)
   const minutes = clampNumber(taskForm.minutes, 0, 59)
@@ -167,55 +195,63 @@ const addTask = () => {
     return
   }
 
-  const nextTask = normalizeTask({
-    id: Date.now(),
-    name,
-    priority: taskForm.priority,
-    minutes: duration,
-    progress: 0,
-    completed: false,
-    note: '新加入清单，开始后可以逐步更新完成状态。'
-  })
-
-  tasks.value.unshift(nextTask)
-  taskForm.name = ''
-  taskForm.hours = 1
-  taskForm.minutes = 0
-  taskForm.priority = 'high'
+  saving.value = true
   formError.value = ''
-  successModalOpen.value = true
+  try {
+    const created = await createTask({ taskName: name, plannedDuration: duration, priority: priorityToApi(taskForm.priority), tags: [], date: selectedDate.value })
+    tasks.value.unshift(normalizeTask(created))
+    dailyProgress.value = taskAverageProgress.value
+    taskForm.name = ''
+    taskForm.hours = 1
+    taskForm.minutes = 0
+    taskForm.priority = 'high'
+    successModalOpen.value = true
+  } catch (error) {
+    formError.value = error.message || '任务添加失败'
+  } finally {
+    saving.value = false
+  }
 }
 
-const addDetailedTask = () => {
+const addDetailedTask = async () => {
   const name = createForm.name.trim()
   if (!name) {
     createError.value = '请填写任务名称'
     return
   }
 
-  const nextTask = normalizeTask({
-    id: Date.now(),
-    name,
-    priority: createForm.priority,
-    minutes: createForm.duration,
-    progress: 0,
-    completed: false,
-    reminder: createForm.reminderEnabled
-      ? `${createForm.reminderDate} ${createForm.reminderTime}`
-      : ''
-  })
-  tasks.value.unshift(nextTask)
-  createForm.name = ''
-  createForm.duration = 30
-  createForm.priority = 'medium'
-  createForm.reminderEnabled = false
+  saving.value = true
   createError.value = ''
-  successModalOpen.value = true
+  try {
+    const created = await createTask({ taskName: name, plannedDuration: createForm.duration, priority: priorityToApi(createForm.priority), tags: [], date: selectedDate.value })
+    const nextTask = normalizeTask(created)
+    nextTask.reminder = createForm.reminderEnabled ? `${createForm.reminderDate} ${createForm.reminderTime}` : ''
+    persistTaskMetadata(nextTask)
+    tasks.value.unshift(nextTask)
+    dailyProgress.value = taskAverageProgress.value
+    createForm.name = ''
+    createForm.duration = 30
+    createForm.priority = 'medium'
+    createForm.reminderEnabled = false
+    successModalOpen.value = true
+  } catch (error) {
+    createError.value = error.message || '任务添加失败'
+  } finally {
+    saving.value = false
+  }
 }
 
-const toggleCompleted = (task) => {
+const toggleCompleted = async (task) => {
+  const previous = { completed: task.completed, progress: task.progress }
   task.completed = !task.completed
   task.progress = task.completed ? 100 : Math.min(task.progress, 68)
+  try {
+    Object.assign(task, normalizeTask(await updateTask(task.id, toApiTask(task))))
+    dailyProgress.value = taskAverageProgress.value
+  } catch (error) {
+    Object.assign(task, previous)
+    pageError.value = error.message || '任务状态更新失败'
+  }
 }
 
 const openDetail = (taskId) => {
@@ -245,11 +281,24 @@ const closeSuccess = (continueAdding = false) => {
   }
 }
 
-const saveTaskDetail = () => {
+const saveTaskDetail = async () => {
   if (!activeTask.value) return
   activeTask.value.completed = activeTask.value.progress === 100
-  persistTasks()
-  backToDashboard()
+  saving.value = true
+  pageError.value = ''
+  try {
+    const localMetadata = { summary: activeTask.value.summary, reminder: activeTask.value.reminder }
+    const updated = await updateTask(activeTask.value.id, toApiTask(activeTask.value))
+    Object.assign(activeTask.value, normalizeTask(updated))
+    Object.assign(activeTask.value, localMetadata)
+    persistTaskMetadata(activeTask.value)
+    dailyProgress.value = taskAverageProgress.value
+    backToDashboard()
+  } catch (error) {
+    pageError.value = error.message || '任务保存失败'
+  } finally {
+    saving.value = false
+  }
 }
 
 const setRating = (rating) => {
@@ -267,6 +316,7 @@ const shiftMonth = (offset) => {
 const chooseDate = (value) => {
   selectedDate.value = value
   datePickerOpen.value = false
+  loadTasks()
 }
 
 const handleEscape = (event) => {
@@ -276,18 +326,8 @@ const handleEscape = (event) => {
   else if (viewMode.value !== 'dashboard') backToDashboard()
 }
 
-watch(tasks, persistTasks, { deep: true })
-
 onMounted(() => {
-  const savedTasks = localStorage.getItem('daily-study-tasks')
-  if (savedTasks) {
-    try {
-      const parsed = JSON.parse(savedTasks)
-      if (Array.isArray(parsed)) tasks.value = parsed.map(normalizeTask)
-    } catch {
-      localStorage.removeItem('daily-study-tasks')
-    }
-  }
+  loadTasks()
   window.addEventListener('keydown', handleEscape)
 })
 
@@ -337,6 +377,7 @@ onUnmounted(() => window.removeEventListener('keydown', handleEscape))
       </header>
 
       <div class="rule"></div>
+      <p v-if="loading || pageError" class="request-state" :class="{ error: pageError }" role="status">{{ loading ? '正在加载计划…' : pageError }}</p>
 
       <section class="workspace" aria-label="今日自习计划">
         <div class="summary-card" aria-label="今日总进度">
@@ -403,7 +444,7 @@ onUnmounted(() => window.removeEventListener('keydown', handleEscape))
 
           <div class="form-footer">
             <p class="form-error" aria-live="polite">{{ formError }}</p>
-            <button class="add-button" type="submit">加入清单</button>
+            <button class="add-button" type="submit" :disabled="saving">{{ saving ? '添加中…' : '加入清单' }}</button>
           </div>
         </form>
       </section>
@@ -513,7 +554,7 @@ onUnmounted(() => window.removeEventListener('keydown', handleEscape))
           <p class="form-error" aria-live="polite">{{ createError }}</p>
           <div class="page-actions">
             <button class="secondary-button" type="button" @click="backToDashboard">取消</button>
-            <button class="primary-button" type="submit">确认</button>
+            <button class="primary-button" type="submit" :disabled="saving">{{ saving ? '保存中…' : '确认' }}</button>
           </div>
         </form>
       </template>
@@ -575,7 +616,7 @@ onUnmounted(() => window.removeEventListener('keydown', handleEscape))
 
           <div class="page-actions detail-actions">
             <button class="secondary-button" type="button" @click="backToDashboard">退出</button>
-            <button class="primary-button" type="button" @click="saveTaskDetail">保存</button>
+            <button class="primary-button" type="button" :disabled="saving" @click="saveTaskDetail">{{ saving ? '保存中…' : '保存' }}</button>
           </div>
         </section>
       </template>
@@ -1145,6 +1186,7 @@ onUnmounted(() => window.removeEventListener('keydown', handleEscape))
   color: var(--danger);
   font-size: 16px;
 }
+.request-state{margin:-18px 0 20px;color:var(--green);font-size:13px}.request-state.error{color:#c76568}.add-button:disabled,.primary-button:disabled{cursor:wait;opacity:.65}
 
 .add-button {
   width: 120px;

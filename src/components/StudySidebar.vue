@@ -1,5 +1,8 @@
 <script setup>
 import { useRouter } from 'vue-router'
+import { ref } from 'vue'
+import { logout } from '@/api/auth'
+import { getAuthSession } from '@/api/client'
 
 defineProps({
   active: {
@@ -9,6 +12,19 @@ defineProps({
 })
 
 const router = useRouter()
+const loggingOut = ref(false)
+const isAdmin = String(getAuthSession()?.role).toUpperCase() === 'ADMIN'
+
+const handleLogout = async () => {
+  if (loggingOut.value) return
+  loggingOut.value = true
+  try { await logout() } catch {
+    // The local session is cleared by logout even when the server is unavailable.
+  } finally {
+    loggingOut.value = false
+    await router.replace('/login')
+  }
+}
 
 const menus = [
   { key: 'home', label: '首页', route: '/home' },
@@ -42,7 +58,7 @@ const menus = [
         <span>设置</span>
       </button>
       <button
-        v-if="active === 'home'"
+        v-if="active === 'home' && isAdmin"
         class="admin-entry"
         type="button"
         aria-label="进入管理端用户数据页"
@@ -50,6 +66,7 @@ const menus = [
       >
         管理端
       </button>
+      <button class="logout-entry" type="button" :disabled="loggingOut" @click="handleLogout">{{ loggingOut ? '退出中…' : '退出' }}</button>
     </div>
   </aside>
 </template>
@@ -177,7 +194,8 @@ const menus = [
 }
 
 .settings,
-.admin-entry {
+.admin-entry,
+.logout-entry {
   width: max-content;
   border: 0;
   padding: 0;
@@ -193,7 +211,8 @@ const menus = [
 }
 
 .settings:hover,
-.admin-entry:hover {
+.admin-entry:hover,
+.logout-entry:hover {
   transform: translateY(-2px);
 }
 
@@ -210,6 +229,7 @@ const menus = [
   padding: 4px 12px;
   color: var(--app-green-strong);
 }
+.logout-entry{margin-left:auto;color:rgba(118,75,0,.5)}.admin-entry+.logout-entry{margin-left:0}.logout-entry:disabled{cursor:wait;opacity:.6}
 
 .settings-icon {
   width: 24px;

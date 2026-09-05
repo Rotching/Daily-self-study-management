@@ -1,17 +1,58 @@
 <script setup>
-import { reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { login, register } from '@/api/auth'
 
 const router = useRouter()
+const route = useRoute()
+const submitting = ref(false)
+const errorMessage = ref('')
+const mode = ref('login')
 
 const form = reactive({
   account: '',
-  password: ''
+  password: '',
+  confirmPassword: ''
 })
 
-const handleLogin = () => {
-  // 登录逻辑占位，跳转至首页
-  router.push('/home')
+const switchMode = (nextMode) => {
+  if (submitting.value || mode.value === nextMode) return
+  mode.value = nextMode
+  form.password = ''
+  form.confirmPassword = ''
+  errorMessage.value = ''
+}
+
+const redirectAfterAuth = async (session) => {
+  const fallback = String(session.role).toUpperCase() === 'ADMIN' ? '/admin/user-data' : '/home'
+  const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/') ? route.query.redirect : fallback
+  await router.replace(redirect)
+}
+
+const handleSubmit = async () => {
+  if (!form.account.trim() || !form.password) {
+    errorMessage.value = '请输入账号和密码'
+    return
+  }
+  if (mode.value === 'register' && form.password.length < 6) {
+    errorMessage.value = '密码至少需要 6 位'
+    return
+  }
+  if (mode.value === 'register' && form.password !== form.confirmPassword) {
+    errorMessage.value = '两次输入的密码不一致'
+    return
+  }
+  submitting.value = true
+  errorMessage.value = ''
+  try {
+    const credentials = { username: form.account.trim(), password: form.password }
+    const session = mode.value === 'register' ? await register(credentials) : await login(credentials)
+    await redirectAfterAuth(session)
+  } catch (error) {
+    errorMessage.value = error.message || (mode.value === 'register' ? '注册失败，请稍后重试' : '登录失败，请稍后重试')
+  } finally {
+    submitting.value = false
+  }
 }
 </script>
 
@@ -24,10 +65,15 @@ const handleLogin = () => {
     </section>
 
     <main class="login-right">
-      <form class="login-panel" @submit.prevent="handleLogin">
-        <p class="login-kicker">欢迎回来</p>
+      <form class="login-panel" @submit.prevent="handleSubmit">
+        <p class="login-kicker">{{ mode === 'login' ? '欢迎回来' : '开始新的成长记录' }}</p>
         <h1 class="login-title">日常自习管理平台</h1>
-        <p class="login-subtitle">登录后继续今天的计划与成长记录</p>
+        <p class="login-subtitle">{{ mode === 'login' ? '登录后继续今天的计划与成长记录' : '创建账号，开始安排你的第一份自习计划' }}</p>
+
+        <div class="auth-tabs" role="tablist" aria-label="账号操作">
+          <button type="button" role="tab" :aria-selected="mode === 'login'" :class="{ active: mode === 'login' }" @click="switchMode('login')">登录</button>
+          <button type="button" role="tab" :aria-selected="mode === 'register'" :class="{ active: mode === 'register' }" @click="switchMode('register')">注册</button>
+        </div>
 
         <div class="login-form">
           <label class="form-item">
@@ -47,12 +93,25 @@ const handleLogin = () => {
             class="form-input"
             type="password"
             placeholder="请输入密码"
-            autocomplete="current-password"
+            :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
+          />
+          </label>
+          <label v-if="mode === 'register'" class="form-item">
+            <span class="form-label">确认密码</span>
+          <input
+            v-model="form.confirmPassword"
+            class="form-input"
+            type="password"
+            placeholder="请再次输入密码"
+            autocomplete="new-password"
           />
           </label>
         </div>
 
-        <button class="login-btn" type="submit">统一认证平台登录</button>
+        <p class="login-error" role="alert">{{ errorMessage }}</p>
+        <button class="login-btn" type="submit" :disabled="submitting">
+          {{ submitting ? (mode === 'login' ? '正在登录…' : '正在注册…') : (mode === 'login' ? '统一认证平台登录' : '创建账号') }}
+        </button>
       </form>
     </main>
   </div>
@@ -144,8 +203,38 @@ const handleLogin = () => {
   font-size: 15px;
 }
 
+.auth-tabs {
+  width: 100%;
+  height: 42px;
+  margin-top: 30px;
+  padding: 3px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  border: 1px solid #d6e2dc;
+  border-radius: var(--app-radius);
+  background: #f2f7f4;
+}
+
+.auth-tabs button {
+  border: 0;
+  border-radius: calc(var(--app-radius) - 2px);
+  background: transparent;
+  color: var(--app-muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.auth-tabs button.active {
+  background: #fff;
+  color: var(--app-green-strong);
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(44, 78, 63, 0.12);
+}
+
 .login-form {
-  margin-top: 38px;
+  margin-top: 24px;
   display: flex;
   flex-direction: column;
   gap: 22px;
@@ -204,6 +293,7 @@ const handleLogin = () => {
 .login-btn:active {
   background: #527966;
 }
+.login-error{min-height:22px;margin:14px 0 0;color:#c76568;font-size:13px}.login-btn:disabled{cursor:wait;opacity:.7}
 
 @media (max-width: 768px) {
   .login-container {

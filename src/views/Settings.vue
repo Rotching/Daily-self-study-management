@@ -1,8 +1,8 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import StudySidebar from '@/components/StudySidebar.vue'
-
-const STORAGE_KEY = 'daily-study-settings'
+import { getGrowthOverview, getGrowthTrack } from '@/api/growth'
+import { getUserProfile, updateUserProfile } from '@/api/user'
 
 const visibility = ref('friends')
 const taskReminder = ref(false)
@@ -10,7 +10,12 @@ const messageReminder = ref(true)
 const nicknameMode = ref('nickname')
 const saved = ref(false)
 const dialog = ref(null)
+const profile = ref(null)
+const loading = ref(false)
+const errorMessage = ref('')
+const ready = ref(false)
 let savedTimer
+let persistTimer
 
 const visibilityText = computed(() => ({
   private: '仅自己可见',
@@ -28,33 +33,50 @@ const settingsSnapshot = () => ({
 })
 
 const persistSettings = () => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settingsSnapshot()))
-  saved.value = true
-  window.clearTimeout(savedTimer)
-  savedTimer = window.setTimeout(() => { saved.value = false }, 1600)
+  if (!ready.value || !profile.value) return
+  window.clearTimeout(persistTimer)
+  persistTimer = window.setTimeout(async () => {
+    errorMessage.value = ''
+    try {
+      const current = profile.value
+      profile.value = await updateUserProfile({
+        displayName: current.displayName,
+        avatar: current.avatar || null,
+        motto: current.motto || '',
+        settings: {
+          ...(current.settings || {}),
+          reminderEnabled: taskReminder.value,
+          studyDurationVisibility: visibility.value,
+          messageEffectEnabled: messageReminder.value,
+          submissionSignature: nicknameMode.value === 'anonymous' ? '匿名' : (current.displayName || current.username)
+        }
+      })
+      saved.value = true
+      window.clearTimeout(savedTimer)
+      savedTimer = window.setTimeout(() => { saved.value = false }, 1600)
+    } catch (error) {
+      errorMessage.value = error.message || '设置保存失败'
+    }
+  }, 450)
 }
 
-const exportGrowthRecord = () => {
-  const payload = {
-    exportedAt: new Date().toISOString(),
-    platform: '日常自习管理平台',
-    settings: settingsSnapshot(),
-    growthRecords: [
-      { date: '2026-07-06', minutes: 80, completion: 72 },
-      { date: '2026-07-07', minutes: 105, completion: 55 },
-      { date: '2026-07-08', minutes: 180, completion: 100 },
-      { date: '2026-07-12', minutes: 150, completion: 85 },
-      { date: '2026-07-13', minutes: 250, completion: 100 }
-    ]
+const exportGrowthRecord = async () => {
+  errorMessage.value = ''
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    const [track, overview] = await Promise.all([getGrowthTrack({ viewType: 'month', date: today }), getGrowthOverview()])
+    const payload = { exportedAt: new Date().toISOString(), platform: '日常自习管理平台', settings: settingsSnapshot(), overview, growthRecords: track?.nodes || [] }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `成长记录-${today}.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+    dialog.value = 'exported'
+  } catch (error) {
+    errorMessage.value = error.message || '成长记录导出失败'
   }
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = `成长记录-${new Date().toISOString().slice(0, 10)}.json`
-  anchor.click()
-  URL.revokeObjectURL(url)
-  dialog.value = 'exported'
 }
 
 const requestReset = () => { dialog.value = 'reset' }
@@ -72,22 +94,26 @@ const closeOnEscape = (event) => {
 }
 
 onMounted(() => {
-  try {
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')
-    if (stored) {
-      visibility.value = stored.visibility ?? visibility.value
-      taskReminder.value = stored.taskReminder ?? taskReminder.value
-      messageReminder.value = stored.messageReminder ?? messageReminder.value
-      nicknameMode.value = stored.nicknameMode ?? nicknameMode.value
-    }
-  } catch {
-    localStorage.removeItem(STORAGE_KEY)
-  }
+  loading.value = true
+  getUserProfile().then((value) => {
+    profile.value = value
+    const settings = value.settings || {}
+    visibility.value = settings.studyDurationVisibility || visibility.value
+    taskReminder.value = settings.reminderEnabled ?? taskReminder.value
+    messageReminder.value = settings.messageEffectEnabled ?? messageReminder.value
+    nicknameMode.value = settings.submissionSignature === '匿名' ? 'anonymous' : 'nickname'
+  }).catch((error) => {
+    errorMessage.value = error.message || '设置加载失败'
+  }).finally(() => {
+    loading.value = false
+    ready.value = Boolean(profile.value)
+  })
   window.addEventListener('keydown', closeOnEscape)
 })
 
 onUnmounted(() => {
   window.clearTimeout(savedTimer)
+  window.clearTimeout(persistTimer)
   window.removeEventListener('keydown', closeOnEscape)
 })
 
@@ -106,6 +132,7 @@ watch([visibility, taskReminder, messageReminder, nicknameMode], persistSettings
       </header>
 
       <div class="rule"></div>
+      <p v-if="loading || errorMessage" class="request-state" :class="{ error: errorMessage }" role="status">{{ loading ? '正在加载设置…' : errorMessage }}</p>
 
       <section class="settings-layout">
         <article class="permission-panel">
@@ -212,6 +239,7 @@ watch([visibility, taskReminder, messageReminder, nicknameMode], persistSettings
 <style scoped>
 .settings-page{--green:#739f8c;--green-strong:#5d8f7a;--green-soft:#eef7f3;--sand:#e6d4b5;--text:#5b534d;--muted:#94877d;min-height:100vh;display:flex;background:var(--app-page-bg);color:var(--text)}
 .settings-main{flex:1;min-width:0;min-height:100vh;padding:var(--app-page-padding-y) var(--app-page-padding-x) 48px;background:#fff}.page-header{max-width:1080px}.eyebrow{display:flex;align-items:center;gap:9px;color:var(--green);font-size:12px}.eyebrow span{width:28px;height:1px;background:var(--sand)}.page-header h1{margin:12px 0 10px;color:var(--app-text-strong);font-size:var(--app-title-size);font-weight:400;line-height:1.15}.page-header p{color:rgba(4,112,44,.5);font-size:16px}.rule{height:1px;margin:28px 0 32px;background:var(--sand)}
+.request-state{margin:-18px 0 20px;color:var(--green);font-size:13px}.request-state.error{color:#c76568}
 .settings-layout{max-width:1040px;display:grid;grid-template-columns:minmax(0,1fr) 270px;align-items:start;gap:28px}.permission-panel{border:1.5px solid var(--sand);border-radius:8px;padding:28px 30px;background:#fff}.section-title{min-height:28px;display:flex;align-items:center;gap:10px}.section-title h2,.privacy-title h2{font-size:23px;font-weight:500}.gear-icon,.shield-icon{width:22px;height:22px;border:1.7px solid currentColor;border-radius:50%;position:relative;color:var(--text)}.gear-icon:after{content:'';position:absolute;inset:6px;border:1.7px solid currentColor;border-radius:50%}.saved-state{margin-left:auto;color:var(--green-strong);font-size:12px}.setting-row{min-height:92px;border-bottom:1px solid #eee8de;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:28px}.setting-row:last-child{border-bottom:0}.setting-copy{min-width:0;display:grid;gap:6px}.setting-copy strong{font-size:16px;font-weight:500}.setting-copy span{color:var(--muted);font-size:12px;line-height:1.55}.select-control select{width:152px;height:40px;border:1px solid #ded8d0;border-radius:6px;padding:0 34px 0 12px;background:#fff;color:var(--text);cursor:pointer}.switch{width:44px;height:24px;border:0;border-radius:12px;padding:3px;background:#c8cbd0;cursor:pointer;transition:background .18s ease}.switch span{display:block;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.18);transition:transform .18s ease}.switch.on{background:var(--green)}.switch.on span{transform:translateX(20px)}.export-button{height:40px;border:0;border-radius:6px;padding:0 17px;display:inline-flex;align-items:center;gap:8px;background:var(--green);color:#fff;cursor:pointer}.export-button:hover,.primary:hover{background:var(--green-strong)}
 .privacy-column{display:grid;gap:22px}.privacy-card{border-radius:8px;padding:28px 24px;background:var(--green-soft)}.privacy-title{display:flex;align-items:center;gap:10px}.shield-icon{border-radius:45% 45% 55% 55%}.privacy-card ul{margin:24px 0 0;display:grid;gap:18px;list-style:none}.privacy-card li{position:relative;padding-left:24px;color:#6f7772;font-size:13px;line-height:1.5}.privacy-card li:before{content:'✓';position:absolute;left:0;color:var(--green-strong);font-weight:700}.current-state{padding:0 6px;color:var(--muted);font-size:12px}.current-state p{margin-bottom:8px}.current-state strong{color:var(--text);font-weight:500}.current-state button{margin-top:8px;border:0;border-bottom:1px solid currentColor;padding:0 0 2px;background:transparent;color:var(--muted);font-size:12px;cursor:pointer}
 .dialog-backdrop{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:20px;background:rgba(52,48,45,.42)}.dialog{width:min(440px,100%);border-radius:8px;padding:34px;position:relative;background:#fff;text-align:center;box-shadow:0 22px 60px rgba(44,39,35,.25)}.dialog-close{position:absolute;right:16px;top:12px;border:0;background:transparent;color:var(--muted);font-size:24px;cursor:pointer}.dialog-mark{width:44px;height:44px;margin:0 auto 16px;border-radius:50%;display:grid;place-items:center;background:#f3eee4;color:#8a7556;font-size:23px}.dialog-mark.success{background:var(--green-soft);color:var(--green-strong)}.dialog h2{font-size:22px;font-weight:500}.dialog p{margin:12px auto 24px;max-width:320px;color:var(--muted);font-size:13px;line-height:1.7}.dialog-actions{display:flex;justify-content:center;gap:12px}.dialog-actions button{min-width:112px;height:40px;border-radius:6px;padding:0 16px;cursor:pointer}.secondary{border:1px solid #d8d1c8;background:#fff;color:var(--text)}.primary{border:0;background:var(--green);color:#fff}.primary.warm{background:#8a755f}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}

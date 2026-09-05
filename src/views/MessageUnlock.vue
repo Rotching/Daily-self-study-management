@@ -1,32 +1,25 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import StudySidebar from '@/components/StudySidebar.vue'
+import { collectMessage, getMessages, submitMessage } from '@/api/messages'
 
-const seedMessages = [
-  { id: 1, type: '学生寄语', quote: '愿你合上书本的时候，比翻开时多一点从容，多一点底气。', author: '写给认真生活的你', date: '2026-07-06', completion: 85, unlocked: true, favorite: true, note: '', privacy: 'private' },
-  { id: 2, type: '成长寄语', quote: '你留下的每一滴汗水，都在悄悄浇灌未来的花朵。', author: '来自七月的自己', date: '2026-07-08', completion: 100, unlocked: true, favorite: false, note: '', privacy: 'private' },
-  { id: 3, type: '学生寄语', quote: '慢慢来，不要着急。所有认真种下的种子，都会在时间里发芽。', author: '日常自习管理平台', date: '2026-07-10', completion: 90, unlocked: true, favorite: false, note: '', privacy: 'friends' },
-  { id: 4, type: '成长寄语', quote: '今天向前的一小步，也在悄悄改变明天的你。', author: '写给未来的我', date: '2026-07-12', completion: 85, unlocked: true, favorite: true, note: '', privacy: 'private' },
-  { id: 5, type: '学生寄语', quote: '坚持不是永远紧绷，而是休息以后，仍愿意回来继续。', author: '自律同行者', date: '2026-07-13', completion: 100, unlocked: true, favorite: false, note: '', privacy: 'friends' },
-  { id: 6, type: '成长寄语', quote: '', author: '', date: '2026-08-28', completion: 0, unlocked: false, favorite: false, note: '', privacy: 'private' }
-]
-
-const messages = ref(seedMessages.map((message) => ({ ...message })))
+const messages = ref([])
 const viewMode = ref('collection')
 const activeMessageId = ref(null)
 const filterMonth = ref('all')
-const filterYear = ref('2026')
+const filterYear = ref('all')
 const unlockModalOpen = ref(false)
 const unlockSuccessOpen = ref(false)
 const shareModalOpen = ref(false)
 const notice = reactive({ open: false, title: '', text: '' })
 const formError = ref('')
 const noteDraft = ref('')
+const loading = ref(false)
+const submitting = ref(false)
+const pageError = ref('')
 
 const unlockForm = reactive({
-  quote: '',
-  author: '',
-  type: '成长寄语'
+  quote: ''
 })
 
 const activeMessage = computed(() => messages.value.find((message) => message.id === activeMessageId.value))
@@ -48,49 +41,70 @@ const filteredMessages = computed(() => messages.value.filter((message) => {
   return matchMonth && matchYear
 }))
 
-const persistMessages = () => localStorage.setItem('growth-messages', JSON.stringify(messages.value))
+const getLocalMetadata = () => {
+  try { return JSON.parse(localStorage.getItem('growth-message-metadata') || '{}') }
+  catch { return {} }
+}
+
+const persistMessageMetadata = () => {
+  const metadata = Object.fromEntries(messages.value.map((message) => [message.id, { note: message.note, privacy: message.privacy }]))
+  localStorage.setItem('growth-message-metadata', JSON.stringify(metadata))
+}
+
+const normalizeMessage = (message, metadata = {}) => ({
+  id: message.messageId,
+  type: message.type === 'user' || message.type === 'student' ? '学生寄语' : '成长寄语',
+  quote: message.content || '',
+  author: message.sourceUser || '日常自习管理平台',
+  date: String(message.unlockTime || '').slice(0, 10) || new Date().toISOString().slice(0, 10),
+  completion: Number(message.completionRate) || 0,
+  unlocked: true,
+  favorite: Boolean(message.isCollected),
+  likeCount: Number(message.likeCount) || 0,
+  unlockCondition: message.unlockCondition || '',
+  note: metadata[message.messageId]?.note || '',
+  privacy: metadata[message.messageId]?.privacy || 'private'
+})
+
+const loadMessages = async () => {
+  loading.value = true
+  pageError.value = ''
+  try {
+    const page = await getMessages({ page: 1, pageSize: 100 })
+    const metadata = getLocalMetadata()
+    messages.value = (page?.list || []).map((message) => normalizeMessage(message, metadata))
+  } catch (error) {
+    messages.value = []
+    pageError.value = error.message || '寄语加载失败'
+  } finally {
+    loading.value = false
+  }
+}
 
 const openUnlock = () => {
   unlockForm.quote = ''
-  unlockForm.author = ''
-  unlockForm.type = '成长寄语'
   formError.value = ''
   unlockModalOpen.value = true
 }
 
-const submitUnlock = () => {
+const submitUnlock = async () => {
   const quote = unlockForm.quote.trim()
-  const author = unlockForm.author.trim()
   if (quote.length < 8) {
     formError.value = '寄语内容至少需要 8 个字'
     return
   }
-  if (!author) {
-    formError.value = '请留下寄语署名'
-    return
+  submitting.value = true
+  formError.value = ''
+  try {
+    await submitMessage(quote)
+    await loadMessages()
+    unlockModalOpen.value = false
+    unlockSuccessOpen.value = true
+  } catch (error) {
+    formError.value = error.message || '寄语提交失败'
+  } finally {
+    submitting.value = false
   }
-
-  const today = new Date()
-  const date = `${today.getFullYear()}-${`${today.getMonth() + 1}`.padStart(2, '0')}-${`${today.getDate()}`.padStart(2, '0')}`
-  const lockedIndex = messages.value.findIndex((message) => !message.unlocked)
-  const newMessage = {
-    id: lockedIndex >= 0 ? messages.value[lockedIndex].id : Date.now(),
-    type: unlockForm.type,
-    quote,
-    author,
-    date,
-    completion: 100,
-    unlocked: true,
-    favorite: false,
-    note: '',
-    privacy: 'private'
-  }
-
-  if (lockedIndex >= 0) messages.value.splice(lockedIndex, 1, newMessage)
-  else messages.value.unshift(newMessage)
-  persistMessages()
-  unlockModalOpen.value = false
-  unlockSuccessOpen.value = true
 }
 
 const closeUnlockSuccess = (continueUnlocking = false) => {
@@ -115,23 +129,30 @@ const backToCollection = () => {
   shareModalOpen.value = false
 }
 
-const toggleFavorite = () => {
+const toggleFavorite = async () => {
   if (!activeMessage.value) return
+  const previous = activeMessage.value.favorite
   activeMessage.value.favorite = !activeMessage.value.favorite
-  persistMessages()
+  try {
+    const result = await collectMessage(activeMessage.value.id)
+    if (typeof result?.isCollected === 'boolean') activeMessage.value.favorite = result.isCollected
+  } catch (error) {
+    activeMessage.value.favorite = previous
+    showNotice('收藏状态未保存', error.message || '请稍后重试。')
+  }
 }
 
 const saveNote = () => {
   if (!activeMessage.value) return
   activeMessage.value.note = noteDraft.value.trim()
-  persistMessages()
+  persistMessageMetadata()
   showNotice('寄语备注已保存', '以后再次读到这张寄语卡片时，也能看见此刻的心情。')
 }
 
 const updatePrivacy = (privacy) => {
   if (!activeMessage.value) return
   activeMessage.value.privacy = privacy
-  persistMessages()
+  persistMessageMetadata()
 }
 
 const showNotice = (title, text) => {
@@ -218,15 +239,7 @@ const closeOnEscape = (event) => {
 }
 
 onMounted(() => {
-  const saved = localStorage.getItem('growth-messages')
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved)
-      if (Array.isArray(parsed)) messages.value = parsed
-    } catch {
-      localStorage.removeItem('growth-messages')
-    }
-  }
+  loadMessages()
   window.addEventListener('keydown', closeOnEscape)
 })
 onUnmounted(() => window.removeEventListener('keydown', closeOnEscape))
@@ -244,7 +257,7 @@ onUnmounted(() => window.removeEventListener('keydown', closeOnEscape))
             <p class="subtitle">这些被认真保存的句子，也在见证你成为更好的自己</p>
           </div>
           <div class="header-actions">
-            <button class="unlock-button" type="button" @click="openUnlock">＋ 解锁寄语</button>
+            <button class="unlock-button" type="button" @click="openUnlock">＋ 提交寄语</button>
             <div class="filters">
               <select v-model="filterMonth" aria-label="筛选月份">
                 <option value="all">全部月份</option>
@@ -257,7 +270,8 @@ onUnmounted(() => window.removeEventListener('keydown', closeOnEscape))
             </div>
           </div>
         </header>
-        <div class="rule"></div>
+      <div class="rule"></div>
+      <p v-if="loading || pageError" class="request-state" :class="{ error: pageError }" role="status">{{ loading ? '正在加载寄语…' : pageError }}</p>
 
         <section class="message-grid" aria-label="成长寄语卡片">
           <button v-for="message in filteredMessages" :key="message.id" class="message-card" :class="[{ locked: !message.unlocked }, message.type === '成长寄语' ? 'growth' : 'student']" type="button" @click="openDetail(message)">
@@ -299,7 +313,7 @@ onUnmounted(() => window.removeEventListener('keydown', closeOnEscape))
             <cite>—— {{ activeMessage.author }}</cite>
             <div class="quote-meta">
               <div><span>解锁时间</span><strong>{{ activeMessage.date }}</strong></div>
-              <div><span>解锁条件</span><strong>当日任务完成度 · {{ activeMessage.completion }}%</strong></div>
+              <div><span>解锁条件</span><strong>{{ activeMessage.unlockCondition || `当日任务完成度 · ${activeMessage.completion}%` }}</strong></div>
             </div>
             <div class="quote-actions">
               <button class="heart-button" type="button" @click="toggleFavorite">{{ activeMessage.favorite ? '♥ 已收藏' : '♡ 收藏' }}</button>
@@ -328,20 +342,18 @@ onUnmounted(() => window.removeEventListener('keydown', closeOnEscape))
     <div v-if="unlockModalOpen" class="modal-backdrop" @click.self="unlockModalOpen = false">
       <form class="form-modal" @submit.prevent="submitUnlock">
         <button class="modal-close" type="button" aria-label="关闭" @click="unlockModalOpen = false">×</button>
-        <h2>解锁你的自律寄语</h2>
+        <h2>提交你的自律寄语</h2>
         <label><span>寄语内容</span><textarea v-model="unlockForm.quote" maxlength="120" placeholder="写下一句想在未来重新读到的话"></textarea></label>
-        <label><span>署名（真实姓名、网名或昵称）</span><input v-model="unlockForm.author" maxlength="24" placeholder="例如：七月的自己" /></label>
-        <fieldset><legend>寄语类型</legend><label><input v-model="unlockForm.type" value="成长寄语" type="radio" />成长寄语</label><label><input v-model="unlockForm.type" value="学生寄语" type="radio" />学生寄语</label></fieldset>
-        <p class="form-tip">寄语会保存在你的个人寄语集中。你可以随时修改备注、收藏状态和分享范围。</p>
+        <p class="form-tip">署名方式由“设置与隐私”中的默认署名决定。提交后若系统开启审核，寄语将在审核通过后出现在寄语集中。</p>
         <p class="form-error" aria-live="polite">{{ formError }}</p>
-        <div class="modal-actions"><button class="secondary" type="button" @click="unlockModalOpen = false">取消</button><button class="primary" type="submit">确认解锁</button></div>
+        <div class="modal-actions"><button class="secondary" type="button" @click="unlockModalOpen = false">取消</button><button class="primary" type="submit" :disabled="submitting">{{ submitting ? '提交中…' : '确认提交' }}</button></div>
       </form>
     </div>
 
     <div v-if="unlockSuccessOpen" class="modal-backdrop" @click.self="closeUnlockSuccess(false)">
       <section class="result-modal" role="dialog" aria-modal="true">
-        <div class="success-icon" aria-hidden="true"></div><h2>寄语已解锁送达</h2><p>这句话已经收进你的成长寄语集，愿它在需要时给你一点力量。</p>
-        <div class="modal-actions"><button class="secondary" type="button" @click="closeUnlockSuccess(true)">继续解锁</button><button class="primary" type="button" @click="closeUnlockSuccess(false)">返回寄语集</button></div>
+        <div class="success-icon" aria-hidden="true"></div><h2>寄语已提交</h2><p>这句话已送达平台，审核通过后会出现在寄语集中。</p>
+        <div class="modal-actions"><button class="secondary" type="button" @click="closeUnlockSuccess(true)">继续提交</button><button class="primary" type="button" @click="closeUnlockSuccess(false)">返回寄语集</button></div>
       </section>
     </div>
 
@@ -361,6 +373,7 @@ onUnmounted(() => window.removeEventListener('keydown', closeOnEscape))
 </template>
 
 <style scoped>
+.request-state{margin:-18px 0 20px;color:var(--green);font-size:13px}.request-state.error{color:#c76568}.primary:disabled{cursor:wait;opacity:.65}
 .message-page{--green:#739f8c;--green-strong:#5d8f7a;--green-soft:#e5f2ec;--sand:#e6d4b5;--sand-soft:#faf5ec;--text:#5a514a;--muted:#978a80;min-height:100vh;display:flex;background:#f7f5f0;color:var(--text)}.message-main{flex:1;min-width:0;min-height:100vh;padding:var(--app-page-padding-y) var(--app-page-padding-x) 40px;background:#fff}.page-header{display:flex;align-items:flex-end;justify-content:space-between;gap:28px}.eyebrow{margin:0 0 10px;color:var(--green);font-size:13px}.page-header h1{margin:0 0 12px;color:rgba(0,0,0,.7);font-size:var(--app-title-size);font-weight:400}.subtitle{margin:0;color:rgba(4,112,44,.5);font-size:16px}.header-actions{display:flex;align-items:flex-end;gap:14px}.unlock-button,.back-button{height:var(--app-control-height);border:1px solid var(--green);border-radius:var(--app-radius);padding:0 18px;background:var(--green);color:#fff;font:inherit;cursor:pointer}.back-button{background:#fff;color:var(--green)}.filters{display:flex;gap:8px}.filters select{height:var(--app-control-height);border:1px solid #bdd5ca;border-radius:var(--app-radius);padding:0 28px 0 10px;background:#fff;color:var(--text);font:inherit}.rule{height:1px;margin:26px 0 30px;background:var(--sand)}
 .message-grid{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:24px}.message-card{min-height:190px;border:1.5px solid var(--sand);border-radius:9px;padding:22px;display:flex;flex-direction:column;background:#fff;color:var(--text);font:inherit;text-align:left;cursor:pointer;transition:transform .18s ease,box-shadow .18s ease}.message-card:hover{transform:translateY(-3px);box-shadow:0 12px 24px rgba(91,80,72,.1)}.message-card.growth{border-color:var(--green);background:#fbfefd}.card-top,.card-foot{display:flex;align-items:center;justify-content:space-between;gap:12px}.card-top span{padding:5px 10px;border-radius:999px;background:var(--sand-soft);color:#8d7653;font-size:12px}.growth .card-top span{background:var(--green-soft);color:var(--green-strong)}.card-top small,.card-foot{color:var(--muted);font-size:11px}.message-card blockquote{flex:1;margin:25px 0 20px;color:#4e4843;font-family:serif;font-size:17px;font-weight:600;line-height:1.8}.card-foot span{color:#c4b69a;font-size:18px}.card-foot span.active{color:#d5ad12}.message-card.locked{align-items:center;justify-content:center;gap:10px;border-color:#d7d7d7;background:#f5f5f5;color:#aaa;text-align:center}.lock-icon{width:28px;height:24px;border:2px solid #bbb;border-radius:5px;position:relative}.lock-icon:before{content:'';position:absolute;left:5px;top:-16px;width:14px;height:16px;border:2px solid #bbb;border-bottom:0;border-radius:10px 10px 0 0}.message-card.locked strong{font-size:14px}.message-card.locked small{font-size:11px}.empty-filter,.collection-foot{text-align:center;color:var(--muted)}.empty-filter{padding:80px 20px}.collection-foot{margin-top:42px;font-size:13px;letter-spacing:4px}
 .detail-layout{display:grid;grid-template-columns:minmax(480px,1fr) minmax(240px,320px);gap:28px}.quote-card{min-height:520px;border:1.5px solid var(--sand);border-radius:9px;padding:34px;display:flex;flex-direction:column;background:#fffdf9}.quote-card.growth{border-color:var(--green);background:#fbfefd}.quote-top{display:flex;justify-content:space-between;align-items:center}.quote-top>span{padding:6px 12px;border-radius:999px;background:var(--sand-soft);color:#8d7653;font-size:12px}.growth .quote-top>span{background:var(--green-soft);color:var(--green-strong)}.quote-top button{border:0;background:transparent;color:var(--text);font:inherit;cursor:pointer}.quote-card blockquote{margin:auto 5%;color:#4e4843;font-family:serif;font-size:clamp(25px,3vw,37px);font-weight:600;line-height:1.9;text-align:center}.quote-card cite{color:var(--green);font-size:14px;text-align:right}.quote-meta{margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:16px}.quote-meta>div{padding:16px;border-radius:7px;background:rgba(248,243,234,.75);display:grid;gap:7px}.quote-meta span{color:var(--muted);font-size:11px}.quote-meta strong{font-size:13px;font-weight:500}.quote-actions{margin-top:24px;display:flex;justify-content:flex-end;gap:10px}.quote-actions button{height:34px;border:1px solid #b9cfc5;border-radius:999px;padding:0 14px;background:#fff;color:var(--green-strong);font:inherit;font-size:12px;cursor:pointer}.quote-actions .heart-button{border-color:#efa7ad;color:#e56d7a}.detail-side{display:grid;align-content:start;gap:20px}.note-panel,.privacy-panel{border:1.5px solid var(--green);border-radius:8px;padding:22px}.note-panel{background:#f4faf7}.note-panel h2,.privacy-panel h2{margin:0 0 16px;color:var(--green-strong);font-size:19px;font-weight:500}.note-panel textarea{width:100%;min-height:92px;border:0;background:transparent;color:var(--text);font:inherit;line-height:1.6;resize:vertical;outline:none}.note-panel button{float:right;border:0;background:transparent;color:var(--green);font:inherit;font-size:12px;cursor:pointer}.privacy-panel{display:grid;gap:13px}.privacy-panel h2{margin-bottom:4px;color:var(--text)}.privacy-panel label{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;cursor:pointer}.privacy-panel input{accent-color:var(--green)}

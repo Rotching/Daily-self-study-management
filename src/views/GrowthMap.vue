@@ -1,23 +1,18 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import StudySidebar from '@/components/StudySidebar.vue'
+import { getGrowthNode, getGrowthTrack } from '@/api/growth'
 
-const records = ref([
-  { date: '2026-07-06', minutes: 80, completion: 72, milestone: true, tasks: [{ name: '英语阅读精练', progress: 80, rating: 4 }, { name: '复习高数公式', progress: 65, rating: 3 }] },
-  { date: '2026-07-07', minutes: 105, completion: 55, tasks: [{ name: '整理英语生词', progress: 60, rating: 3 }, { name: '线性代数习题', progress: 50, rating: 3 }] },
-  { date: '2026-07-08', minutes: 180, completion: 100, tasks: [{ name: '完成阅读训练', progress: 100, rating: 5 }, { name: '高数错题复盘', progress: 100, rating: 4 }] },
-  { date: '2026-07-09', minutes: 0, completion: 0, rest: true, tasks: [] },
-  { date: '2026-07-10', minutes: 145, completion: 85, tasks: [{ name: '概率论章节练习', progress: 90, rating: 4 }, { name: '单词复习', progress: 80, rating: 4 }] },
-  { date: '2026-07-11', minutes: 0, completion: 0, rest: true, tasks: [] },
-  { date: '2026-07-12', minutes: 150, completion: 85, tasks: [{ name: '线性代数概念复习', progress: 90, rating: 5 }, { name: '英语长难句精读', progress: 80, rating: 4 }, { name: '高数第三章练习', progress: 65, rating: 3 }, { name: 'Java基础复习', progress: 100, rating: 5 }, { name: '整理今日笔记', progress: 90, rating: 4 }] },
-  { date: '2026-07-13', minutes: 250, completion: 100, milestone: true, tasks: [{ name: '高数章节测试复习', progress: 100, rating: 5 }, { name: '英语阅读专项训练', progress: 100, rating: 5 }, { name: '算法基础练习', progress: 100, rating: 4 }] }
-])
+const records = ref([])
 
-const selectedDate = ref('2026-07-12')
+const selectedDate = ref(toDateValue(new Date()))
 const pickerOpen = ref(false)
-const calendarCursor = ref(new Date(2026, 6, 1))
+const calendarCursor = ref(new Date())
+const detailRecord = ref(null)
+const loading = ref(false)
+const errorMessage = ref('')
 
-const selectedRecord = computed(() => records.value.find((record) => record.date === selectedDate.value) ?? {
+const selectedRecord = computed(() => detailRecord.value ?? records.value.find((record) => record.date === selectedDate.value) ?? {
   date: selectedDate.value, minutes: 0, completion: 0, rest: true, tasks: []
 })
 
@@ -61,12 +56,53 @@ const shortDate = (value) => {
   return `${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}`
 }
 
-const chooseDate = (value) => {
+const normalizeTask = (task = {}) => ({
+  name: task.taskName ?? task.name ?? '未命名任务',
+  progress: Number(task.progress) || 0,
+  rating: Number(task.rating) || 0
+})
+
+const normalizeRecord = (node = {}) => ({
+  date: node.date,
+  minutes: Number(node.duration) || 0,
+  completion: Number(node.completion) || 0,
+  rest: node.status === 'rest' || node.status === 'inactive',
+  milestone: node.status === 'milestone' || Number(node.completion) === 100,
+  tasks: Array.isArray(node.tasks) ? node.tasks.map(normalizeTask) : []
+})
+
+const loadTrack = async () => {
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    const track = await getGrowthTrack({ viewType: 'week', date: selectedDate.value, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone })
+    records.value = (track?.nodes || []).map(normalizeRecord)
+  } catch (error) {
+    records.value = []
+    errorMessage.value = error.message || '成长轨迹加载失败'
+  } finally {
+    loading.value = false
+  }
+}
+
+const loadDetail = async () => {
+  try {
+    const detail = await getGrowthNode(selectedDate.value)
+    detailRecord.value = normalizeRecord(detail || { date: selectedDate.value })
+  } catch (error) {
+    detailRecord.value = null
+    if (error.status !== 404 && !errorMessage.value) errorMessage.value = error.message || '日期详情加载失败'
+  }
+}
+
+const chooseDate = async (value) => {
   selectedDate.value = value
   localStorage.setItem('growth-selected-date', value)
   const date = parseDate(value)
   calendarCursor.value = new Date(date.getFullYear(), date.getMonth(), 1)
   pickerOpen.value = false
+  detailRecord.value = null
+  await Promise.all([loadTrack(), loadDetail()])
 }
 
 const shiftMonth = (offset) => {
@@ -77,7 +113,12 @@ const closeOnEscape = (event) => { if (event.key === 'Escape') pickerOpen.value 
 
 onMounted(() => {
   const saved = localStorage.getItem('growth-selected-date')
-  if (/^\d{4}-\d{2}-\d{2}$/.test(saved ?? '')) chooseDate(saved)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(saved ?? '')) {
+    selectedDate.value = saved
+    const date = parseDate(saved)
+    calendarCursor.value = new Date(date.getFullYear(), date.getMonth(), 1)
+  }
+  Promise.all([loadTrack(), loadDetail()])
   window.addEventListener('keydown', closeOnEscape)
 })
 onUnmounted(() => window.removeEventListener('keydown', closeOnEscape))
@@ -109,6 +150,7 @@ onUnmounted(() => window.removeEventListener('keydown', closeOnEscape))
       </header>
 
       <div class="rule"></div>
+      <p v-if="loading || errorMessage" class="request-state" :class="{ error: errorMessage }" role="status">{{ loading ? '正在加载成长轨迹…' : errorMessage }}</p>
 
       <section class="timeline-panel">
         <h2>光阴长河 · 成长自律轨迹</h2>
@@ -151,6 +193,7 @@ onUnmounted(() => window.removeEventListener('keydown', closeOnEscape))
 <style scoped>
 .growth-page{--green:#739f8c;--green-strong:#5d8f7a;--green-soft:#dcece5;--sand:#e6d4b5;--sand-soft:#f8f3ea;--text:#5b534d;--muted:#94877d;min-height:100vh;display:flex;background:#f7f5f0;color:var(--text)}
 .growth-main{flex:1;min-width:0;min-height:100vh;padding:var(--app-page-padding-y) var(--app-page-padding-x) 40px;background:#fff}.page-header{display:flex;justify-content:space-between;align-items:flex-start;gap:24px}.page-header h1{margin:0 0 16px;color:rgba(0,0,0,.7);font-size:var(--app-title-size);font-weight:400}.page-header p{margin:0;color:rgba(4,112,44,.5);font-size:16px}.date-control{position:relative;z-index:10}.date-button{width:158px;height:var(--app-control-height);border:0;border-radius:var(--app-radius);background:#7caf91;color:#fff;font:inherit;font-size:16px;cursor:pointer}.date-button span{margin-left:12px}.rule{height:1px;margin:28px 0 32px;background:var(--sand)}
+.request-state{margin:-18px 0 20px;color:var(--green);font-size:13px}.request-state.error{color:#c76568}
 .calendar{position:absolute;top:calc(100% + 10px);right:0;width:300px;padding:15px;border:1px solid var(--sand);border-radius:8px;background:#fff;box-shadow:0 16px 38px rgba(75,67,61,.18)}.calendar-head,.calendar-weekdays,.calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);align-items:center}.calendar-head{grid-template-columns:32px 1fr 32px;margin-bottom:8px}.calendar-head strong{text-align:center;font-size:15px}.calendar-head button,.calendar-grid button{border:0;background:transparent;color:var(--text);font:inherit;cursor:pointer}.calendar-head button{height:30px;font-size:22px}.calendar-weekdays span{padding:6px 0;color:var(--muted);text-align:center;font-size:11px}.calendar-grid button{aspect-ratio:1;border-radius:50%;position:relative;font-size:12px}.calendar-grid button.muted{color:#c9c0b9}.calendar-grid button.recorded:after{content:'';position:absolute;left:50%;bottom:2px;width:4px;height:4px;border-radius:50%;background:var(--green);transform:translateX(-50%)}.calendar-grid button.selected{background:#5d5a57;color:#fff}.calendar-grid button.selected:after{background:#fff}
 .timeline-panel,.summary-panel,.tasks-panel{border:1.5px solid var(--sand);border-radius:8px;background:#fff}.timeline-panel{padding:30px 34px 24px}.timeline-panel h2,.panel-title h2{margin:0;color:var(--text);font-size:23px;font-weight:500}.timeline{margin:36px 18px 24px;display:grid;grid-template-columns:repeat(8,minmax(52px,1fr));position:relative}.timeline:before{content:'';position:absolute;left:4%;right:4%;top:25px;height:2px;background:repeating-linear-gradient(to right,#a6c8b8 0 10px,transparent 10px 16px)}.timeline-point{border:0;padding:0;display:grid;justify-items:center;gap:10px;background:transparent;color:var(--muted);font:inherit;cursor:pointer;position:relative;z-index:1}.point-value{width:52px;height:52px;border:2px solid #9ec5b4;border-radius:50%;display:grid;place-items:center;background:#fff;color:var(--green-strong);font-size:12px;transition:transform .18s ease,background .18s ease}.timeline-point:hover .point-value{transform:translateY(-3px)}.timeline-point.active .point-value{background:var(--green-strong);color:#fff}.timeline-point.rest .point-value{border-color:#cdd9d3;border-style:dashed;color:#b7c1bc}.timeline-point.milestone .point-value{border-color:#e8c82a;color:#d1a900}.timeline-point.milestone.active .point-value{background:#f2d63e;color:#6c5900}.point-date{font-size:12px}.legend{display:flex;justify-content:center;flex-wrap:wrap;gap:24px;color:var(--muted);font-size:12px}.legend span{display:inline-flex;align-items:center;gap:6px}.legend-dot{width:9px;height:9px;border:1px solid var(--green);border-radius:50%}.legend-dot.selected{background:var(--green)}.legend-dot.rest{border-style:dashed;border-color:#b8c4be}.legend-dot.milestone{border-color:#e8c82a;background:#f2d63e}
 .record-grid{margin-top:28px;display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);align-items:start;gap:28px}.summary-panel,.tasks-panel{min-width:0;padding:28px}.tasks-panel{border-color:var(--green)}.panel-title p{margin:9px 0 0;color:var(--green);font-size:13px}.metric-grid{margin-top:28px;display:grid;grid-template-columns:1fr 1fr;gap:16px}.metric{min-height:112px;border-radius:7px;padding:20px;display:flex;flex-direction:column;justify-content:space-between}.metric.green{background:#eef7f3}.metric.sand{background:var(--sand-soft)}.metric span{color:var(--muted);font-size:13px}.metric strong{color:var(--text);font-size:27px;font-weight:500}.record-tasks{margin-top:20px;display:grid;gap:12px}.record-task{min-height:48px;display:grid;grid-template-columns:30px 1fr auto;align-items:center;gap:12px}.task-index{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:#dcece5;color:var(--green-strong);font-size:12px}.task-copy{min-width:0;display:flex;align-items:center;justify-content:space-between;gap:12px}.task-copy strong{overflow:hidden;color:var(--text);font-size:14px;font-weight:500;text-overflow:ellipsis;white-space:nowrap}.task-stars{flex:0 0 auto;color:#d8caa8;font-size:10px}.task-stars i{font-style:normal}.task-stars i.filled{color:#e8bd1d}.task-progress{color:var(--green-strong);font-size:13px}.empty-record{min-height:140px;display:grid;place-items:center;align-content:center;gap:14px;color:var(--muted);text-align:center}.empty-record span{font-size:42px;color:#b8cec4}.empty-record p{margin:0;line-height:1.6}

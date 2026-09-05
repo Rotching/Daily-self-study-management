@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { getAuthSession, isAuthenticated } from '@/api/client'
 
 const routes = [
   {
@@ -15,31 +16,31 @@ const routes = [
     path: '/home',
     name: 'Home',
     component: () => import('@/views/Home.vue'),
-    meta: { title: '首页' }
+    meta: { title: '首页', requiresAuth: true }
   },
   {
     path: '/task-planning',
     name: 'TaskPlanning',
     component: () => import('@/views/TaskPlanning.vue'),
-    meta: { title: '每日任务规划' }
+    meta: { title: '每日任务规划', requiresAuth: true }
   },
   {
     path: '/message-unlock',
     name: 'MessageUnlock',
     component: () => import('@/views/MessageUnlock.vue'),
-    meta: { title: '寄语解锁' }
+    meta: { title: '寄语解锁', requiresAuth: true }
   },
   {
     path: '/growth-map',
     name: 'GrowthMap',
     component: () => import('@/views/GrowthMap.vue'),
-    meta: { title: '成长轨迹地图' }
+    meta: { title: '成长轨迹地图', requiresAuth: true }
   },
   {
     path: '/settings',
     name: 'Settings',
     component: () => import('@/views/Settings.vue'),
-    meta: { title: '设置与隐私' }
+    meta: { title: '设置与隐私', requiresAuth: true }
   },
   {
     path: '/admin/message-manage',
@@ -64,6 +65,18 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   if (to.meta.title) {
     document.title = `${to.meta.title} - 日常自习管理平台`
+  }
+  if (to.meta.requiresAuth && !isAuthenticated()) {
+    next({ path: '/login', query: { redirect: to.fullPath } })
+    return
+  }
+  if (to.meta.requiresAdmin && String(getAuthSession()?.role).toUpperCase() !== 'ADMIN') {
+    next('/home')
+    return
+  }
+  if (to.path === '/login' && isAuthenticated()) {
+    next(String(getAuthSession()?.role).toUpperCase() === 'ADMIN' ? '/admin/user-data' : '/home')
+    return
   }
   next()
 })

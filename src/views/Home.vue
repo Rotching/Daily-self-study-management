@@ -1,26 +1,89 @@
 <script setup>
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import StudySidebar from '@/components/StudySidebar.vue'
+import { getGreeting } from '@/api/common'
+import { getDailyTasks } from '@/api/tasks'
+import { getUserProfile, getUserStatistics } from '@/api/user'
 
-// 首页渲染数据（待接入接口）
 const homeData = ref({
   // 用户信息
   greeting: '今日自律，稳步精进',
-  username: '张三同学',
+  username: '同学',
   subtitle: '不追赶谁，照顾自己的节奏就很好',
   // 核心数据卡片
-  todayCompletion: 70, // 今日完成度（%）
-  weeklyDays: 5, // 本周自习天数
-  unlockedMessages: 12, // 已解锁寄语条数
-  totalHours: 28, // 累计自习小时
-  totalMinutes: 5, // 累计自习分钟
+  todayCompletion: 0,
+  weeklyDays: 0,
+  unlockedMessages: 0,
+  totalHours: 0,
+  totalMinutes: 0,
   // 今日任务概况
-  totalTasks: 3,
-  completedTasks: 1,
-  pendingList: ['英语阅读4篇', '高数错题整理'], // 待完成任务
+  totalTasks: 0,
+  completedTasks: 0,
+  pendingList: [],
   // 今日寄语
   dailyQuote: '你留下的每一滴汗水，都在悄悄浇灌未来的花朵。'
 })
+const loading = ref(true)
+const errorMessage = ref('')
+
+const priorityMeta = {
+  1: { key: 'low', label: '低优先级' },
+  2: { key: 'medium', label: '中优先级' },
+  3: { key: 'high', label: '高优先级' },
+  low: { key: 'low', label: '低优先级' },
+  medium: { key: 'medium', label: '中优先级' },
+  high: { key: 'high', label: '高优先级' }
+}
+
+const toDateValue = (date) => `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}`
+const normalizePriority = (priority) => priorityMeta[String(priority).toLowerCase()] || priorityMeta[2]
+
+const loadHome = async () => {
+  loading.value = true
+  errorMessage.value = ''
+  const results = await Promise.allSettled([
+    getUserProfile(), getUserStatistics(), getDailyTasks(toDateValue(new Date())), getGreeting()
+  ])
+  const [profileResult, statisticsResult, tasksResult, greetingResult] = results
+  if (profileResult.status === 'fulfilled') {
+    const profile = profileResult.value
+    homeData.value.username = profile.displayName || profile.username || '同学'
+    homeData.value.subtitle = profile.motto || homeData.value.subtitle
+  }
+  if (statisticsResult.status === 'fulfilled') {
+    const statistics = statisticsResult.value
+    const total = Number(statistics.totalStudyDuration) || 0
+    homeData.value.todayCompletion = Number(statistics.todayCompletion?.percentage) || 0
+    homeData.value.weeklyDays = statistics.weekStatistics?.filter((day) => Number(day.duration) > 0).length || statistics.weekGrowth?.nodeCount || 0
+    homeData.value.unlockedMessages = Number(statistics.totalUnlocked) || 0
+    homeData.value.totalHours = Math.floor(total / 60)
+    homeData.value.totalMinutes = total % 60
+  }
+  if (tasksResult.status === 'fulfilled') {
+    const daily = tasksResult.value || {}
+    const tasks = Array.isArray(daily.tasks) ? daily.tasks : []
+    if (Number.isFinite(Number(daily.totalCompletion))) homeData.value.todayCompletion = Number(daily.totalCompletion)
+    homeData.value.totalTasks = tasks.length
+    homeData.value.completedTasks = tasks.filter((task) => task.status === 'completed' || Number(task.progress) >= 100).length
+    homeData.value.pendingList = tasks
+      .filter((task) => String(task.status).toLowerCase() !== 'completed' && Number(task.progress) < 100)
+      .map((task) => ({
+        id: task.taskId ?? task.id ?? task.taskName,
+        name: task.taskName || task.name || '未命名任务',
+        priority: normalizePriority(task.priority)
+      }))
+  }
+  if (greetingResult.status === 'fulfilled' && greetingResult.value?.greeting) {
+    homeData.value.dailyQuote = greetingResult.value.greeting
+    homeData.value.greeting = `第 ${greetingResult.value.week || '-'} 周 · 今日自律，稳步精进`
+  }
+  const failures = results.filter((result) => result.status === 'rejected')
+  if (failures.length === results.length) errorMessage.value = failures[0].reason?.message || '首页数据加载失败'
+  else if (failures.length) errorMessage.value = '部分数据暂时未能加载，已展示可用内容'
+  loading.value = false
+}
+
+onMounted(loadHome)
 
 </script>
 
@@ -38,6 +101,7 @@ const homeData = ref({
       </header>
 
       <div class="divider"></div>
+      <p v-if="loading || errorMessage" class="load-state" :class="{ error: errorMessage }" role="status">{{ loading ? '正在同步今日数据…' : errorMessage }}</p>
 
       <!-- 数据卡片 -->
       <section class="cards">
@@ -79,17 +143,14 @@ const homeData = ref({
             <div class="pending-list">
               <div
                 v-for="(item, idx) in homeData.pendingList"
-                :key="idx"
+                :key="item.id"
                 class="pending-item"
               >
-                {{ idx + 1 }}. {{ item }}
+                <span class="pending-name">{{ idx + 1 }}. {{ item.name }}</span>
+                <span class="priority" :class="item.priority.key">{{ item.priority.label }}</span>
               </div>
+              <p v-if="!loading && !homeData.pendingList.length" class="pending-empty">今天没有待完成任务</p>
             </div>
-          </div>
-
-          <div class="priority-tags">
-            <div class="priority mid">中优先级</div>
-            <div class="priority high">高优先级</div>
           </div>
         </div>
       </section>
@@ -110,6 +171,7 @@ const homeData = ref({
   background: #f7f5f0;
   overflow: hidden;
 }
+.load-state{margin:-8px 0 22px;color:var(--app-green);font-size:13px}.load-state.error{color:#b86a6c}
 
 /* ============ 左侧导航栏 ============ */
 .sidebar {
@@ -352,28 +414,41 @@ const homeData = ref({
 }
 
 .pending-list {
+  min-width: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
 
 .pending-item {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
   color: #948477;
   font-size: 17px;
   line-height: 1.5;
 }
 
-.priority-tags {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-self: flex-start;
+.pending-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pending-empty {
+  margin: 0;
+  color: #9aaca3;
+  font-size: 15px;
 }
 
 .priority {
-  width: 104px;
+  min-width: 82px;
   height: 30px;
-  border-radius: 20px;
+  flex: 0 0 auto;
+  border-radius: 15px;
+  padding: 0 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -382,7 +457,11 @@ const homeData = ref({
   font-family: Inter;
 }
 
-.priority.mid {
+.priority.low {
+  background: #8fb8a6;
+}
+
+.priority.medium {
   background: #e6d4b5;
 }
 
@@ -445,6 +524,10 @@ const homeData = ref({
   .task-card,
   .task-pending {
     flex-direction: column;
+  }
+
+  .pending-item {
+    align-items: flex-start;
   }
 }
 </style>
