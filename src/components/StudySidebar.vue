@@ -261,7 +261,9 @@ const menus = computed(() => adminMode.value ? adminMenus : userMenus)
 }
 
 .user-entry {
-  padding-left: 18px;
+  justify-content: center;
+  padding-inline: 18px;
+  text-align: center;
 }
 
 .logout-entry {

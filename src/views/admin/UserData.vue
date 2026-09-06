@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AdminLayout from '@/layouts/AdminLayout.vue'
+import AdminDateInput from '@/components/AdminDateInput.vue'
 import { getAdminUserData, searchAdminUsers } from '@/api/admin/users'
 
 const route = useRoute()
@@ -25,6 +26,14 @@ let ignoreNextKeywordWatch = false
 
 const selectedUserId = computed(() => String(route.query.userId || ''))
 const userInfo = computed(() => userData.value?.userInfo || null)
+const avatarText = computed(() => {
+  const username = String(userInfo.value?.username || '').trim()
+  return username ? Array.from(username)[0] : '--'
+})
+const avatarLabel = computed(() => {
+  const username = String(userInfo.value?.username || '').trim()
+  return username ? `${username}的文字头像` : '用户头像未提供'
+})
 const overview = computed(() => userData.value?.overview || null)
 const dailyRecords = computed(() => Array.isArray(userData.value?.dailyRecords) ? userData.value.dailyRecords : [])
 const continuousRecords = computed(() => userData.value?.continuousRecords || null)
@@ -218,7 +227,7 @@ onBeforeUnmount(() => {
     <section v-if="userData" class="overview-grid" aria-label="用户数据概览">
       <article class="profile-card">
         <div class="profile-head">
-          <div class="avatar-placeholder" aria-label="用户头像未提供">--</div>
+          <div class="avatar-placeholder" :aria-label="avatarLabel">{{ avatarText }}</div>
           <div>
             <h2>{{ displayValue(userInfo?.username) }}</h2>
             <p>{{ displayValue(userInfo?.grade) }} · {{ displayValue(userInfo?.department) }}</p>
@@ -266,8 +275,8 @@ onBeforeUnmount(() => {
           <p>当前连续 {{ displayValue(continuousRecords?.current) }} 天，只呈现个人记录</p>
         </div>
         <form class="date-filter" @submit.prevent="applyDateFilter">
-          <label>开始日期<input v-model="startDate" type="date" /></label>
-          <label>结束日期<input v-model="endDate" type="date" /></label>
+          <label>开始日期<AdminDateInput v-model="startDate" /></label>
+          <label>结束日期<AdminDateInput v-model="endDate" /></label>
           <div class="date-actions">
             <button type="submit" :disabled="dataLoading">筛选</button>
             <button type="button" class="secondary" :disabled="dataLoading" @click="clearDateFilter">清除</button>
@@ -482,7 +491,8 @@ onBeforeUnmount(() => {
   place-items: center;
   background: #e6f0ec;
   color: var(--app-green);
-  font-size: 15px;
+  font-size: 24px;
+  font-weight: 600;
 }
 
 .profile-head h2 {
@@ -634,16 +644,6 @@ onBeforeUnmount(() => {
   gap: 5px;
   color: var(--app-muted);
   font-size: 12px;
-}
-
-.date-filter input {
-  min-width: 0;
-  height: 40px;
-  border: 1px solid #bfd2c8;
-  border-radius: 8px;
-  padding: 0 9px;
-  background: #fff;
-  color: var(--app-text);
 }
 
 .date-actions {

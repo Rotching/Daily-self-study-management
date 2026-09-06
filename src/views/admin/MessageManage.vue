@@ -1,24 +1,37 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import AdminLayout from '@/layouts/AdminLayout.vue'
+import AdminDateInput from '@/components/AdminDateInput.vue'
 import { getAdminMessages } from '@/api/admin/messages'
+import messageArrowGreen from '@/assets/icons/message-arrow-green.svg'
+import messageArrowBrown from '@/assets/icons/message-arrow-brown.svg'
+import messageDetailClose from '@/assets/icons/message-detail-close.svg'
 
 const keyword = ref('')
 const messageType = ref('')
 const startDate = ref('')
 const endDate = ref('')
+const currentView = ref('overview')
+const libraryStatus = ref('')
 const page = ref(1)
-const pageSize = 6
 const messages = ref([])
 const total = ref(0)
 const loading = ref(false)
 const errorMessage = ref('')
 const filterError = ref('')
+const selectedMessage = ref(null)
+const detailCloseButton = ref(null)
 let requestController
 
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
+const isOverview = computed(() => currentView.value === 'overview')
+const currentTitle = computed(() => ({
+  overview: '寄语管理',
+  library: '寄语内容库',
+  review: '寄语审核'
+}[currentView.value]))
+const currentPageSize = computed(() => isOverview.value ? 3 : 6)
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / currentPageSize.value)))
 const displayValue = (value) => value === undefined || value === null || value === '' ? '--' : value
-const displayTime = (value) => value ? String(value).replace('T', ' ') : '--'
 const typeLabel = (type) => ({ system: '系统寄语', user: '用户投稿' }[type] || displayValue(type))
 const statusLabel = (status) => ({ approved: '已通过', pending: '待审核' }[status] || displayValue(status))
 
@@ -36,11 +49,12 @@ const loadMessages = async () => {
   try {
     const result = await getAdminMessages({
       page: page.value,
-      pageSize,
-      keyword: keyword.value.trim(),
-      type: messageType.value,
-      startDate: startDate.value,
-      endDate: endDate.value
+      pageSize: currentPageSize.value,
+      status: currentView.value === 'review' ? 'pending' : currentView.value === 'library' ? libraryStatus.value : '',
+      keyword: isOverview.value ? '' : keyword.value.trim(),
+      type: isOverview.value ? '' : messageType.value,
+      startDate: isOverview.value ? '' : startDate.value,
+      endDate: isOverview.value ? '' : endDate.value
     }, { signal: controller.signal })
     messages.value = Array.isArray(result?.list) ? result.list : []
     total.value = Number(result?.total || 0)
@@ -70,28 +84,79 @@ const clearFilters = async () => {
   await loadMessages()
 }
 
+const openView = async (view) => {
+  currentView.value = view
+  page.value = 1
+  await loadMessages()
+}
+
+const returnToOverview = async () => {
+  currentView.value = 'overview'
+  page.value = 1
+  await loadMessages()
+}
+
+const changeLibraryStatus = async (status) => {
+  if (!['', 'pending', 'approved'].includes(status) || loading.value) return
+  libraryStatus.value = status
+  page.value = 1
+  await loadMessages()
+}
+
 const changePage = async (nextPage) => {
   if (nextPage < 1 || nextPage > totalPages.value || loading.value) return
   page.value = nextPage
   await loadMessages()
 }
 
-onMounted(loadMessages)
-onBeforeUnmount(() => requestController?.abort())
+const openMessageDetail = async (message) => {
+  selectedMessage.value = message
+  await nextTick()
+  detailCloseButton.value?.focus()
+}
+
+const closeMessageDetail = () => {
+  selectedMessage.value = null
+}
+
+const handleKeydown = (event) => {
+  if (event.key === 'Escape' && selectedMessage.value) closeMessageDetail()
+}
+
+onMounted(() => {
+  loadMessages()
+  document.addEventListener('keydown', handleKeydown)
+})
+onBeforeUnmount(() => {
+  requestController?.abort()
+  document.removeEventListener('keydown', handleKeydown)
+})
 </script>
 
 <template>
   <AdminLayout
     active="messages"
     eyebrow="内容管理 · 成长寄语审核"
-    title="寄语管理"
+    :title="currentTitle"
   >
-    <section class="library-banner" aria-label="寄语内容库">
-      <span>寄语内容库</span>
-      <span>{{ total }} 条</span>
-    </section>
+    <template #header-actions>
+      <button v-if="!isOverview" class="back-overview" type="button" @click="returnToOverview">返回概览</button>
+    </template>
 
-    <form class="message-filters" aria-label="寄语筛选" @submit.prevent="applyFilters">
+    <button v-if="isOverview" class="library-banner" type="button" @click="openView('library')">
+      <span>寄语内容库</span>
+      <span aria-hidden="true">›</span>
+    </button>
+
+    <div v-if="currentView === 'library'" class="library-tabs" aria-label="寄语状态筛选">
+      <button type="button" :class="{ active: libraryStatus === '' }" @click="changeLibraryStatus('')">全部</button>
+      <button type="button" :class="{ active: libraryStatus === 'pending' }" @click="changeLibraryStatus('pending')">待审核</button>
+      <button type="button" :class="{ active: libraryStatus === 'approved' }" @click="changeLibraryStatus('approved')">已通过</button>
+      <button type="button" disabled title="状态枚举待后端确认">已下架</button>
+      <button type="button" disabled title="状态枚举待后端确认">草稿箱</button>
+    </div>
+
+    <form v-if="!isOverview" class="message-filters" aria-label="寄语筛选" @submit.prevent="applyFilters">
       <label class="keyword-field">
         <span>关键词</span>
         <input v-model="keyword" type="search" placeholder="搜索内容或投稿人" />
@@ -106,11 +171,11 @@ onBeforeUnmount(() => requestController?.abort())
       </label>
       <label>
         <span>开始日期</span>
-        <input v-model="startDate" type="date" />
+        <AdminDateInput v-model="startDate" />
       </label>
       <label>
         <span>结束日期</span>
-        <input v-model="endDate" type="date" />
+        <AdminDateInput v-model="endDate" />
       </label>
       <div class="filter-actions">
         <button type="submit" :disabled="loading">查询</button>
@@ -119,10 +184,12 @@ onBeforeUnmount(() => requestController?.abort())
       <p v-if="filterError" class="filter-error" role="alert">{{ filterError }}</p>
     </form>
 
-    <section class="review-section" aria-labelledby="review-title">
+    <section class="review-section" :class="{ 'detail-view': !isOverview }" aria-labelledby="review-title">
       <div class="section-heading">
-        <h2 id="review-title">寄语审核</h2>
-        <span>第 {{ page }} / {{ totalPages }} 页</span>
+        <h2 v-if="isOverview" id="review-title">寄语审核</h2>
+        <span v-else id="review-title" class="sr-only">{{ currentTitle }}</span>
+        <button v-if="isOverview" type="button" @click="openView('review')">更多&gt;</button>
+        <span v-else>第 {{ page }} / {{ totalPages }} 页</span>
       </div>
 
       <div v-if="loading" class="message-state" role="status">正在加载寄语…</div>
@@ -137,20 +204,27 @@ onBeforeUnmount(() => requestController?.abort())
           :key="message.messageId"
           class="message-card"
           :class="message.status"
+          role="button"
+          tabindex="0"
+          :aria-label="`查看寄语详情：${displayValue(message.content)}`"
+          @click="openMessageDetail(message)"
+          @keydown.enter="openMessageDetail(message)"
+          @keydown.space.prevent="openMessageDetail(message)"
         >
-          <div class="message-card-head">
-            <p class="message-status">{{ statusLabel(message.status) }}</p>
-            <span>{{ typeLabel(message.type) }}</span>
+          <div v-if="isOverview" class="message-card-head">
+            <p class="message-status">{{ statusLabel(message.status) }} - {{ typeLabel(message.type) }}</p>
           </div>
-          <p class="message-content">{{ displayValue(message.content) }}</p>
-          <dl class="message-meta">
-            <div><dt>编号</dt><dd>{{ displayValue(message.messageId) }}</dd></div>
-            <div><dt>提交时间</dt><dd>{{ displayTime(message.submitTime) }}</dd></div>
-            <div v-if="message.reviewComment"><dt>审核意见</dt><dd>{{ message.reviewComment }}</dd></div>
-          </dl>
-          <p class="message-author">—— {{ displayValue(message.submitUser) }}</p>
-          <div class="message-actions" aria-label="写操作尚未开放">
-            <button type="button" disabled>{{ message.status === 'pending' ? '审核契约待确认' : '只读' }}</button>
+          <img
+            v-else
+            class="detail-arrow"
+            :src="message.status === 'approved' ? messageArrowGreen : messageArrowBrown"
+            alt=""
+          />
+          <p class="message-content">“ {{ displayValue(message.content) }}</p>
+          <p class="message-author">——{{ displayValue(message.submitUser) }}</p>
+          <div v-if="isOverview" class="message-actions" aria-label="写操作尚未开放">
+            <button type="button" disabled>{{ message.status === 'pending' ? '通过' : '下架' }}</button>
+            <button v-if="message.status === 'pending'" type="button" disabled>驳回</button>
           </div>
         </article>
       </div>
@@ -162,7 +236,7 @@ onBeforeUnmount(() => requestController?.abort())
       </nav>
     </section>
 
-    <section class="system-panel" aria-labelledby="system-title">
+    <section v-if="isOverview" class="system-panel" aria-labelledby="system-title">
       <div class="system-heading">
         <h2 id="system-title">上传系统寄语</h2>
         <span>发布契约待确认</span>
@@ -191,6 +265,36 @@ onBeforeUnmount(() => requestController?.abort())
         </div>
       </div>
     </section>
+
+    <Teleport to="body">
+      <div v-if="selectedMessage" class="detail-overlay" @click.self="closeMessageDetail">
+        <section class="message-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="message-detail-title">
+          <button ref="detailCloseButton" class="detail-close" type="button" aria-label="关闭寄语详情" @click="closeMessageDetail">
+            <img :src="messageDetailClose" alt="" />
+          </button>
+          <h2 id="message-detail-title">寄语详情</h2>
+          <div class="detail-rule"></div>
+
+          <div class="detail-field">
+            <h3>寄语内容</h3>
+            <div class="detail-content">“ {{ displayValue(selectedMessage.content) }} ”</div>
+          </div>
+
+          <div class="detail-field signature-detail">
+            <h3>署名</h3>
+            <div class="detail-signature">{{ displayValue(selectedMessage.submitUser) }}</div>
+          </div>
+
+          <div v-if="selectedMessage.type === 'user'" class="detail-notice">
+            温馨提示：投稿进入待审核库，审核通过后，将以学生成长寄语的形式推荐给正在自习的同学们。
+          </div>
+
+          <div class="detail-footer">
+            <button type="button" @click="closeMessageDetail">关闭</button>
+          </div>
+        </section>
+      </div>
+    </Teleport>
   </AdminLayout>
 </template>
 
@@ -208,6 +312,7 @@ onBeforeUnmount(() => requestController?.abort())
 }
 
 .library-banner {
+  width: 100%;
   min-height: 62px;
   border: 2px solid rgba(143, 184, 166, 0.3);
   border-radius: var(--app-panel-radius);
@@ -217,14 +322,69 @@ onBeforeUnmount(() => requestController?.abort())
   justify-content: space-between;
   background: rgba(230, 240, 236, 0.4);
   color: rgba(4, 112, 44, 0.75);
+  font: inherit;
   font-size: 20px;
   font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease;
 }
 
 .library-banner span:last-child {
+  color: #111;
+  font-size: 30px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.library-banner:hover {
+  border-color: rgba(143, 184, 166, 0.62);
+  background: rgba(230, 240, 236, 0.65);
+}
+
+.back-overview {
+  min-width: 108px;
+  min-height: 42px;
+  border: 1px solid var(--app-green-light);
+  border-radius: 10px;
+  padding: 0 18px;
+  background: #fff;
   color: var(--app-green-strong);
-  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.back-overview:hover {
+  background: var(--app-green);
+  color: #fff;
+}
+
+.library-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 18px;
+}
+
+.library-tabs button {
+  min-height: 58px;
+  border: 1px solid rgba(4, 112, 44, 0.75);
+  border-radius: 10px;
+  background: #fff;
+  color: rgba(4, 112, 44, 0.75);
+  font-size: 22px;
   font-weight: 500;
+  cursor: pointer;
+}
+
+.library-tabs button.active {
+  border-color: #82b896;
+  background: #82b896;
+  color: #fff;
+}
+
+.library-tabs button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .message-filters {
@@ -247,7 +407,7 @@ onBeforeUnmount(() => requestController?.abort())
   font-size: 12px;
 }
 
-.message-filters input,
+.message-filters .keyword-field input,
 .message-filters select {
   width: 100%;
   min-width: 0;
@@ -301,6 +461,15 @@ onBeforeUnmount(() => requestController?.abort())
   margin-top: 20px;
 }
 
+.review-section.detail-view {
+  margin-top: 24px;
+}
+
+.review-section.detail-view .section-heading {
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
 .section-heading {
   margin: 0 28px 16px;
   display: flex;
@@ -316,27 +485,59 @@ onBeforeUnmount(() => requestController?.abort())
   font-weight: 500;
 }
 
-.section-heading span {
+.section-heading span,
+.section-heading button {
   color: rgba(4, 112, 44, 0.5);
   font-size: 18px;
 }
 
+.section-heading button {
+  border: 0;
+  padding: 6px 0 6px 12px;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.section-heading button:hover {
+  color: var(--app-green-strong);
+}
+
 .message-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(3, 324px);
+  gap: 18px;
+  justify-content: start;
+}
+
+.detail-view .message-grid {
+  gap: 33px;
 }
 
 .message-card {
+  width: 324px;
+  max-width: 100%;
+  height: 246px;
   min-width: 0;
-  min-height: 246px;
-  border: 1.5px solid var(--app-sand);
-  border-radius: var(--app-panel-radius);
-  padding: 16px 16px 12px;
-  display: flex;
-  flex-direction: column;
-  background: rgba(230, 212, 181, 0.08);
-  box-shadow: 0 3px 4px rgba(0, 0, 0, 0.16);
+  border: 2px solid var(--app-sand);
+  border-radius: 25px;
+  padding: 0;
+  overflow: hidden;
+  background: rgba(230, 212, 181, 0.1);
+  box-shadow: 0 4px 4px rgba(0, 0, 0, 0.25);
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.message-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.2);
+}
+
+.message-card:focus-visible {
+  outline: 3px solid rgba(115, 159, 140, 0.3);
+  outline-offset: 3px;
 }
 
 .message-card.approved {
@@ -345,24 +546,26 @@ onBeforeUnmount(() => requestController?.abort())
 }
 
 .message-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  position: absolute;
+  top: 18px;
+  left: 16px;
+  right: 16px;
+  height: 24px;
 }
 
-.message-card-head > span {
-  border-radius: 999px;
-  padding: 3px 8px;
-  background: #edf5f1;
-  color: var(--app-green-strong);
-  font-size: 11px;
+.detail-arrow {
+  position: absolute;
+  top: 15px;
+  right: 13px;
+  width: 14px;
+  height: 14px;
 }
 
 .message-status {
   margin: 0;
   color: #764b00;
-  font-size: 13px;
+  font-size: 16px;
+  line-height: normal;
 }
 
 .message-card.approved .message-status,
@@ -371,49 +574,43 @@ onBeforeUnmount(() => requestController?.abort())
 }
 
 .message-content {
-  min-height: 72px;
-  margin: 16px 0 0;
-  color: #111;
-  font-size: 17px;
-  line-height: 1.65;
-  overflow-wrap: anywhere;
-}
-
-.message-meta {
-  margin: 10px 0;
-  display: grid;
-  gap: 5px;
-  color: #8a817b;
-  font-size: 11px;
-}
-
-.message-meta div {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
-  gap: 6px;
-}
-
-.message-meta dt,
-.message-meta dd {
+  width: 287px;
+  max-width: calc(100% - 32px);
+  height: 123px;
   margin: 0;
-}
-
-.message-meta dd {
+  position: absolute;
+  top: 59px;
+  left: 16px;
+  overflow: hidden;
+  color: #111;
+  font-size: 20px;
+  line-height: 35px;
   overflow-wrap: anywhere;
 }
 
 .message-author {
-  margin: auto 0 8px;
+  width: 157px;
+  height: 28px;
+  margin: 0;
+  position: absolute;
+  top: 174px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   color: #764b00;
-  font-size: 13px;
+  font-size: 16px;
+  line-height: normal;
   text-align: right;
 }
 
 .message-actions {
-  min-height: 24px;
+  height: 24px;
+  position: absolute;
+  top: 208px;
+  left: 24px;
   display: flex;
-  gap: 10px;
+  gap: 14px;
 }
 
 .message-actions button {
@@ -421,10 +618,11 @@ onBeforeUnmount(() => requestController?.abort())
   min-height: 24px;
   border: 1px solid currentColor;
   border-radius: 999px;
-  padding: 1px 10px;
+  padding: 0 9px;
   background: #fdfbf8;
   color: rgba(118, 75, 0, 0.5);
-  font-size: 12px;
+  font-size: 14px;
+  line-height: 22px;
 }
 
 .message-actions button:disabled {
@@ -583,7 +781,161 @@ onBeforeUnmount(() => requestController?.abort())
   opacity: 0.82;
 }
 
+.detail-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  background: rgba(120, 120, 120, 0.2);
+}
+
+.message-detail-dialog {
+  width: 739px;
+  max-width: 100%;
+  height: min(811px, calc(100vh - 48px));
+  min-height: 600px;
+  border: 1px solid #948477;
+  border-radius: 16px;
+  padding: 38px 44px 24px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background: #fff;
+  box-shadow: 4px 8px 8px rgba(120, 120, 120, 0.2);
+}
+
+.message-detail-dialog h2 {
+  margin: 0;
+  color: #594f47;
+  font-size: 32px;
+  font-weight: 500;
+  line-height: normal;
+}
+
+.detail-close {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  padding: 12px;
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  cursor: pointer;
+}
+
+.detail-close:hover {
+  background: rgba(148, 132, 119, 0.1);
+}
+
+.detail-close img {
+  width: 12px;
+  height: 12px;
+}
+
+.detail-rule {
+  height: 1px;
+  margin-top: 9px;
+  background: #948477;
+}
+
+.detail-field {
+  margin-top: 31px;
+}
+
+.detail-field h3 {
+  margin: 0 0 13px;
+  color: rgba(4, 112, 44, 0.7);
+  font-size: 20px;
+  font-weight: 300;
+}
+
+.detail-content,
+.detail-signature {
+  border: 1px solid #e6d4b5;
+  border-radius: 16px;
+  background: rgba(230, 212, 181, 0.2);
+}
+
+.detail-content {
+  min-height: 175px;
+  padding: 19px 18px;
+  color: #000;
+  font-size: 20px;
+  line-height: 35px;
+  overflow-wrap: anywhere;
+}
+
+.signature-detail {
+  margin-top: 35px;
+}
+
+.detail-signature {
+  min-height: 47px;
+  padding: 10px 18px;
+  color: #848485;
+  font-size: 18px;
+  font-weight: 200;
+}
+
+.detail-notice {
+  min-height: 141px;
+  margin-top: 53px;
+  border: 1px solid #8fb8a6;
+  border-radius: 16px;
+  padding: 31px 46px;
+  display: flex;
+  align-items: center;
+  background: rgba(230, 240, 236, 0.4);
+  color: #000;
+  font-size: 16px;
+  font-weight: 200;
+  line-height: 30px;
+}
+
+.detail-footer {
+  margin-top: auto;
+  padding-top: 24px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.detail-footer button {
+  width: 112px;
+  min-height: 40px;
+  border: 1px solid #70655d;
+  border-radius: 8px;
+  background: #fff;
+  color: #303030;
+  cursor: pointer;
+}
+
+.detail-footer button:hover {
+  background: rgba(112, 101, 93, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-card {
+    transition: none;
+  }
+
+  .message-card:hover {
+    transform: none;
+  }
+}
+
 @media (max-width: 1200px) {
+  .library-tabs {
+    grid-template-columns: repeat(2, minmax(120px, 204px));
+  }
+
   .message-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -597,7 +949,7 @@ onBeforeUnmount(() => requestController?.abort())
   }
 
   .message-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, 324px);
   }
 
   .message-card:last-child {
@@ -612,6 +964,22 @@ onBeforeUnmount(() => requestController?.abort())
 }
 
 @media (max-width: 768px) {
+  .back-overview {
+    min-width: auto;
+    min-height: 40px;
+    padding-inline: 12px;
+  }
+
+  .library-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .library-tabs button {
+    min-height: 48px;
+    font-size: 18px;
+  }
+
   .library-banner {
     padding-inline: 20px;
   }
@@ -635,6 +1003,10 @@ onBeforeUnmount(() => requestController?.abort())
 
   .message-grid {
     grid-template-columns: 1fr;
+  }
+
+  .message-card {
+    justify-self: center;
   }
 
   .message-card:last-child {
@@ -665,6 +1037,31 @@ onBeforeUnmount(() => requestController?.abort())
 
   .pagination {
     flex-wrap: wrap;
+  }
+
+  .detail-overlay {
+    padding: 12px;
+  }
+
+  .message-detail-dialog {
+    height: auto;
+    min-height: min(680px, calc(100vh - 24px));
+    max-height: calc(100vh - 24px);
+    padding: 28px 20px 20px;
+  }
+
+  .message-detail-dialog h2 {
+    font-size: 26px;
+  }
+
+  .detail-content {
+    font-size: 18px;
+    line-height: 31px;
+  }
+
+  .detail-notice {
+    margin-top: 32px;
+    padding: 22px;
   }
 }
 </style>

@@ -28,9 +28,12 @@ defineProps({
 
     <main class="admin-main">
       <header class="admin-page-header">
-        <p class="admin-eyebrow">{{ eyebrow }}</p>
-        <h1>{{ title }}</h1>
-        <p v-if="subtitle" class="admin-subtitle">{{ subtitle }}</p>
+        <div class="admin-header-copy">
+          <p class="admin-eyebrow">{{ eyebrow }}</p>
+          <h1>{{ title }}</h1>
+          <p v-if="subtitle" class="admin-subtitle">{{ subtitle }}</p>
+        </div>
+        <slot name="header-actions" />
       </header>
       <div class="admin-rule"></div>
       <slot />
@@ -55,7 +58,15 @@ defineProps({
 }
 
 .admin-page-header {
-  max-width: 1080px;
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.admin-header-copy {
+  min-width: 0;
 }
 
 .admin-eyebrow {
@@ -102,6 +113,10 @@ defineProps({
 
   .admin-page-header h1 {
     font-size: 34px;
+  }
+
+  .admin-page-header {
+    gap: 16px;
   }
 
   .admin-subtitle {
